@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const {createCustomer, getAllCustomers,getCustomerById,updateCustomer} = require("../controllers/customerController");
+const {createCustomer, getAllCustomers,getCustomerById,updateCustomer,deleteCustomer} = require("../controllers/customerController");
 
 // Route to create a new customer
 //endpoint: POST /api/customers
@@ -17,6 +17,10 @@ router.get("/:id", getCustomerById);
 // Route to update a customer by ID
 //endpoint: PUT /api/customers/:id
 router.put("/:id", updateCustomer);
+
+// Route to delete a customer by ID
+//endpoint: DELETE /api/customers/:id
+router.delete("/:id", deleteCustomer);
 
 module.exports = router;
 
