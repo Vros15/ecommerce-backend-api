@@ -7,7 +7,7 @@ const connectToMongoDB = require("./database/connectToMongoDB");
 app.use(express.json());
 app.use(logger(`dev`));
 
-
+app.use("/api/customers", require("./routes/customersRouter"));
 
 const PORT = 3000;
 
