@@ -9,6 +9,7 @@ app.use(logger(`dev`));
 
 app.use("/api/customers", require("./routes/customersRouter"));
 app.use("/api/products", require("./routes/productsRouter"));
+app.use("/api/carts", require("./routes/cartsRouter"));
 
 const PORT = 3000;
 
