@@ -61,9 +61,24 @@ const updateProductById = async (req, res) => {
     }
 }
 
+//DELETE a product by ID
+const deleteProductById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const deletedProduct = await Product.findByIdAndDelete(id);
+        if (!deletedProduct) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+        res.status(200).json({ message: "Product deleted successfully", product: deletedProduct });
+    } catch (error) {
+        res.status(500).json({ message: "Error deleting product", error });
+    }
+}
+
 module.exports = {
     createProduct,
     getAllProducts,
     getProductById,
-    updateProductById
+    updateProductById,
+    deleteProductById
 };
