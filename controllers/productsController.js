@@ -1,5 +1,6 @@
 const Product = require('../models/Product');
 
+//POST create a new product
 const createProduct = async (req, res) => {
     try {
         //destructuring the product details from the request body
@@ -12,6 +13,7 @@ const createProduct = async (req, res) => {
     }
 }
 
+//GET all products
 const getAllProducts = async (req, res) => {
     try {
         const products = await Product.find();
@@ -21,7 +23,24 @@ const getAllProducts = async (req, res) => {
     }
 }
 
+//GET product by ID
+const getProductById = async (req, res) => {
+    try {
+        //destructuring the product id from the request parameters
+        const { id } = req.params;
+        //finding the product by its id in the database
+        const product = await Product.findById(id);
+        if (!product) {
+            return res.status(404).json({ message: "Product not found" });
+        }
+        res.status(200).json({ message: "Product retrieved successfully", product });
+    } catch (error) {
+        res.status(500).json({ message: "Error retrieving product", error });
+    }
+}
+
 module.exports = {
     createProduct,
     getAllProducts,
+    getProductById,
 };
