@@ -58,7 +58,56 @@ const getCart = async (req, res) => {
     }
 };
 
+const addProductToCart = async (req, res) => {
+    try {
+        const { customer } = req.params;
+        const { productId, quantity } = req.body;
+
+        // Validate request body
+        if (!productId || quantity == null) {
+            return res.status(400).json({
+                message: "Both productId and quantity are required."
+            });
+        }
+
+        // Find the customer's cart and add the product
+        const updatedCart = await Cart.findOneAndUpdate(
+            { customer },
+            {
+                $push: {
+                    products: {
+                        productId,
+                        quantity
+                    }
+                }
+            },
+            {
+                new: true
+            }
+        );
+
+        // Check if the cart exists
+        if (!updatedCart) {
+            return res.status(404).json({
+                message: "Cart not found for this customer."
+            });
+        }
+
+        res.status(200).json({
+            message: "Product added to cart successfully.",
+            cart: updatedCart
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error adding product to cart.",
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     createOneCart,
-    getCart
+    getCart,
+    addProductToCart
 };
