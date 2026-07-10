@@ -38,7 +38,9 @@ const getCart = async (req, res) => {
         //deconstruct the customer parameter from the request URL
         const { customer } = req.params;
 
-        const cart = await Cart.findOne({ customer });
+        const cart = await Cart.findOne({ customer })
+        .populate("customer")
+        .populate("products.productId");
 
         // If no cart is found for the given customer, return a 404 error.
         if (!cart) {
@@ -46,10 +48,13 @@ const getCart = async (req, res) => {
                 message: "Cart not found for this customer."
             });
         }
-        // Return the cart details if found
+        const totalPrice = cart.products.reduce((total, item) => total + item.quantity * item.productId.price, 0);
+        
+        // Return the cart details if found with total price calculated
         res.status(200).json({
             message: "Cart retrieved successfully.",
-            cart
+            cart,
+            totalPrice
         });
     } catch (error) {
         res.status(500).json({
