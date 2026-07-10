@@ -48,7 +48,7 @@ const getCart = async (req, res) => {
                 message: "Cart not found for this customer."
             });
         }
-        const totalPrice = cart.products.reduce((total, item) => total + item.quantity * item.productId.price, 0);
+        const totalPrice = cart.products.reduce((total, item) => total + item.quantity * item.productId.price, 0).toFixed(2);
         
         // Return the cart details if found with total price calculated
         res.status(200).json({
