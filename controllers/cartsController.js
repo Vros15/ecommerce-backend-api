@@ -84,6 +84,17 @@ const addProductToCart = async (req, res) => {
             });
         }
 
+        //check if product already exist in the cart
+        const cart = await Cart.findOne({
+             customer,
+             "products.productId": productId
+            });
+        if (cart) {
+            return res.status(400).json({
+                message: "Product already exists in the cart."
+            });
+        }
+
         // Find the customer's cart and add the product
         const updatedCart = await Cart.findOneAndUpdate(
             { customer },
@@ -196,11 +207,57 @@ const clearCart = async (req, res) => {
     }
 };
 
+//update the quantity of the cart
+const updateQuantity = async (req, res) => {
+    try {
+        const { customer } = req.params;
+        const { productId, quantity } = req.body;
+
+        if (!productId || quantity == null) {
+            return res.status(400).json({
+                message: "productId and quantity are required."
+            });
+        }
+
+        const updatedCart = await Cart.findOneAndUpdate(
+            {
+                customer,
+                "products.productId": productId
+            },
+            {
+                $set: {
+                    "products.$.quantity": quantity
+                }
+            },
+            {
+                new: true
+            }
+        );
+
+        if (!updatedCart) {
+            return res.status(404).json({
+                message: "Cart not found or product not in cart."
+            });
+        }
+
+        res.status(200).json({
+            message: "Product quantity updated successfully.",
+            cart: updatedCart
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            message: "Error updating product quantity.",
+            error: error.message
+        });
+    }
+};
 
 module.exports = {
     createOneCart,
     getCart,
     addProductToCart,
     removeProductFromCart,
-    clearCart
+    clearCart,
+    updateQuantity
 };
