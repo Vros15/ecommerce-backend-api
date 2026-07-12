@@ -74,6 +74,20 @@ const createOrderFromCart = async (req, res) => {
 
 
 // Function to retrieve all orders
+const getAllOrders = async (req, res) => {
+    try {
+        const orders = await Order.find().populate("products.productId");
+        res.status(200).json({
+            message: "Orders retrieved successfully.",
+            orders
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error retrieving orders.",
+            error: error.message
+        });
+    }
+};
 
 // Function to retrieve a single order by ID
 
@@ -82,4 +96,4 @@ const createOrderFromCart = async (req, res) => {
 // Function to delete an order by ID
 
 // Export the controller functions for use in the routes
-module.exports = { createOrderFromCart };
+module.exports = { createOrderFromCart,getAllOrders };
