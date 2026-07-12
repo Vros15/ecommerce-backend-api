@@ -10,7 +10,8 @@ app.use(logger(`dev`));
 app.use("/api/customers", require("./routes/customersRouter"));
 app.use("/api/products", require("./routes/productsRouter"));
 app.use("/api/carts", require("./routes/cartsRouter"));
-//TODO: Add the orders router
+app.use("/api/orders", require("./routes/ordersRouter"));
+  
 const PORT = 3000;
 
 app.listen(PORT, async () => {
