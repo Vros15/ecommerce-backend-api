@@ -1,9 +1,10 @@
 //TODO: Implement the orders controller functions for creating, retrieving, updating, and deleting orders.
 
+const Order = require("../models/Order");
 
-// Import the Order model
+// Function to create a new order from the cart 
+const createOrderFromCart = async (req, res) => {}
 
-// Function to create a new order
 
 // Function to retrieve all orders
 

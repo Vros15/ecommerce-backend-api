@@ -33,7 +33,7 @@ const orderSchema = new mongoose.Schema({
         enum: ["pending", "shipped", "delivered", "cancelled"],
         default: "pending",
     },
-});
+}, { timestamps: true });
 
 // Create a model based on the schema
 const Order = mongoose.model("Order", orderSchema);
