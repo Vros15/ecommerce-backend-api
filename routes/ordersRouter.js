@@ -3,16 +3,20 @@
 // Import the Express router and the orders controller
 const express = require("express");
 const router = express.Router();
-const {createOrderFromCart,getAllOrders} = require("../controllers/ordersController");
+const {createOrderFromCart,getAllOrders,getOrderById} = require("../controllers/ordersController");
 
 //POST create a new order
 //endpoint: POST /order/:customer
 router.post("/:customer", createOrderFromCart);
 
 //GET all orders & Filter by status
+//endpoint: GET /order?status=pending
 router.get("/", getAllOrders);
 
 //GET a single order by ID
+//endpoint: GET /order/:orderId
+router.get("/:orderId", getOrderById);
+
 
 //PUT update status of an order by ID
 
