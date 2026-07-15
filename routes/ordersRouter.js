@@ -3,7 +3,7 @@
 // Import the Express router and the orders controller
 const express = require("express");
 const router = express.Router();
-const {createOrderFromCart,getAllOrders,getOrderById} = require("../controllers/ordersController");
+const {createOrderFromCart,getAllOrders,getOrderById, updateOrderById } = require("../controllers/ordersController");
 
 //POST create a new order
 //endpoint: POST /order/:customer
@@ -17,8 +17,9 @@ router.get("/", getAllOrders);
 //endpoint: GET /order/:orderId
 router.get("/:orderId", getOrderById);
 
-
 //PUT update status of an order by ID
+//endpoint: PUT /order/:orderId
+router.put("/:orderId", updateOrderById);
 
 //DELETE delete an order by ID
 
