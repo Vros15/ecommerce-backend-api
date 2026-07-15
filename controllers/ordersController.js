@@ -90,10 +90,30 @@ const getAllOrders = async (req, res) => {
 };
 
 // Function to retrieve a single order by ID
+const getOrderById = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const order = await Order.findById(orderId).populate("products.productId");
+        if (!order) {
+            return res.status(404).json({
+                message: "Order not found."
+            });
+        }
+        res.status(200).json({
+            message: "Order retrieved successfully.",
+            order
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error retrieving order.",
+            error: error.message
+        });
+    }
+};
 
 // Function to update an order by ID
 
 // Function to delete an order by ID
 
 // Export the controller functions for use in the routes
-module.exports = { createOrderFromCart,getAllOrders };
+module.exports = { createOrderFromCart,getAllOrders,getOrderById };
