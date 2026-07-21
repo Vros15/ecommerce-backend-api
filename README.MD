@@ -57,6 +57,64 @@ This project was built to strengthen and demonstrate backend software engineerin
 - Mongoose
 - Morgan
 - dotenv
+- Helmet
+- CORS
+- express-rate-limit
+
+---
+
+# Production Hardening (Implemented)
+
+The API now includes incremental production-hardening improvements:
+
+- Centralized error handling with a shared error response format
+- Async controller wrapper to forward promise errors consistently
+- Route-not-found middleware (`404`)
+- Request validation middleware for carts, customers, and products
+- Security middleware: Helmet, CORS, JSON payload size limit, and API rate limiting (`429`)
+- Startup reliability improvements:
+     - Fail-fast startup if MongoDB connection fails
+     - Graceful shutdown on `SIGINT` and `SIGTERM`
+
+> **In progress**
+>
+> Orders hardening is tracked in a dedicated branch and will be merged after validation and controller refactor are completed.
+
+---
+
+# Sprint Roadmap
+
+Use this checklist to track production-readiness hardening work.
+
+## Sprint 1 - Platform and Cart Hardening
+
+- [x] Add centralized error pipeline (`AppError`, `asyncHandler`, `notFound`, `errorHandler`)
+- [x] Add fail-fast startup and graceful shutdown
+- [x] Add cart request validation middleware and route wiring
+- [x] Add baseline security middleware (Helmet, CORS, rate limiting, JSON body limit)
+
+## Sprint 2 - Customer Hardening
+
+- [x] Add customer request validation middleware and route wiring
+- [x] Migrate customer controller to centralized error handling
+
+## Sprint 3 - Product Hardening
+
+- [x] Add product request validation middleware and route wiring
+- [x] Migrate products controller to centralized error handling
+
+## Sprint 4 - Orders Hardening (Current)
+
+- [ ] Add order request validation middleware and route wiring
+- [ ] Migrate orders controller to centralized error handling
+- [ ] Merge `orders-hardening` into `main`
+
+## Sprint 5 - Observability and Quality
+
+- [ ] Add `/health` endpoint
+- [ ] Add `/ready` endpoint with database readiness check
+- [ ] Add smoke/integration tests for core API flows
+- [ ] Update API documentation for standardized error responses
 
 ---
 
@@ -193,6 +251,7 @@ Current functionality:
 | 201 | Resource Created |
 | 400 | Bad Request |
 | 404 | Resource Not Found |
+| 429 | Too Many Requests |
 | 500 | Internal Server Error |
 
 ---
@@ -369,16 +428,18 @@ ECommerce-Backend-API
 │
 ├── controllers/
 ├── database/
+├── middlewares/
 ├── models/
 ├── routes/
 ├── seed/
 │   ├── README.md
 │   └── seed.js
+├── utils/
 ├── .env
 ├── .gitignore
+├── index.js
 ├── package.json
 ├── package-lock.json
-├── server.js
 └── README.md
 ```
 
@@ -408,12 +469,16 @@ Create a `.env` file:
 
 ```env
 MONGODB_URI=your_connection_string
+# Optional
+PORT=3000
+RATE_LIMIT_MAX=100
+CORS_ORIGIN=http://localhost:3000
 ```
 
 Start the development server:
 
 ```bash
-npm run dev
+node index.js
 ```
 
 The API will be available at:
@@ -437,7 +502,7 @@ http://localhost:3000
 - Password hashing with bcrypt
 - User authentication
 - Role-based authorization
-- Input validation middleware
+- Complete orders validation middleware coverage
 - Unit and integration testing with Jest
 - Swagger / OpenAPI documentation
 - Docker support
