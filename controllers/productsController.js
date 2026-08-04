@@ -15,7 +15,7 @@ const createProduct = asyncHandler(async (req, res) => {
 //GET all products, optionally filtered and sorted
 //Query params are validated upstream by validateProductQuery
 const getAllProducts = asyncHandler(async (req, res) => {
-    const { category, search, minPrice, maxPrice, inStock, sort, order } = req.query;
+    const { category, search, minPrice, maxPrice, inStock, sortBy, sortOrder } = req.query;
 
     const filter = {};
 
@@ -47,9 +47,9 @@ const getAllProducts = asyncHandler(async (req, res) => {
 
     const query = Product.find(filter);
 
-    //order alone has no effect; it only qualifies an explicit sort field
-    if (sort !== undefined) {
-        query.sort({ [sort]: order === "desc" ? -1 : 1 });
+    //sortOrder alone has no effect; it only qualifies an explicit sortBy field
+    if (sortBy !== undefined) {
+        query.sort({ [sortBy]: sortOrder === "desc" ? -1 : 1 });
 
         //MongoDB compares strings by byte value by default, which sorts every
         //capital letter ahead of every lowercase one and puts "LED" before

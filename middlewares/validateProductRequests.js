@@ -5,13 +5,28 @@ const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
 
 const ALLOWED_SORT_FIELDS = ["price", "name"];
 const ALLOWED_SORT_ORDERS = ["asc", "desc"];
+const ALLOWED_QUERY_PARAMS = ["category", "search", "minPrice", "maxPrice", "inStock", "sortBy", "sortOrder"];
 
 const validateProductQuery = (req, res, next) => {
-  const { category, search, minPrice, maxPrice, inStock, sort, order } = req.query;
+  const { category, search, minPrice, maxPrice, inStock, sortBy, sortOrder } = req.query;
+
+  // Rejecting unknown parameters turns a typo into a clear error instead of a
+  // 200 that quietly ignored the filter the caller thought they applied.
+  const unknownParams = Object.keys(req.query).filter((key) => !ALLOWED_QUERY_PARAMS.includes(key));
+
+  if (unknownParams.length > 0) {
+    return next(
+      new AppError(
+        `Unknown query parameter(s): ${unknownParams.join(", ")}. Supported: ${ALLOWED_QUERY_PARAMS.join(", ")}.`,
+        400,
+        "INVALID_PRODUCT_QUERY"
+      )
+    );
+  }
 
   // A repeated parameter such as ?category=a&category=b arrives as an array,
   // which would reach the query builder as an unexpected type.
-  const singleValueParams = { category, search, minPrice, maxPrice, inStock, sort, order };
+  const singleValueParams = { category, search, minPrice, maxPrice, inStock, sortBy, sortOrder };
 
   for (const [key, value] of Object.entries(singleValueParams)) {
     if (value !== undefined && typeof value !== "string") {
@@ -58,12 +73,12 @@ const validateProductQuery = (req, res, next) => {
     return next(new AppError('inStock must be "true" or "false".', 400, "INVALID_PRODUCT_QUERY"));
   }
 
-  if (sort !== undefined && !ALLOWED_SORT_FIELDS.includes(sort)) {
-    return next(new AppError(`sort must be one of: ${ALLOWED_SORT_FIELDS.join(", ")}.`, 400, "INVALID_PRODUCT_QUERY"));
+  if (sortBy !== undefined && !ALLOWED_SORT_FIELDS.includes(sortBy)) {
+    return next(new AppError(`sortBy must be one of: ${ALLOWED_SORT_FIELDS.join(", ")}.`, 400, "INVALID_PRODUCT_QUERY"));
   }
 
-  if (order !== undefined && !ALLOWED_SORT_ORDERS.includes(order)) {
-    return next(new AppError(`order must be one of: ${ALLOWED_SORT_ORDERS.join(", ")}.`, 400, "INVALID_PRODUCT_QUERY"));
+  if (sortOrder !== undefined && !ALLOWED_SORT_ORDERS.includes(sortOrder)) {
+    return next(new AppError(`sortOrder must be one of: ${ALLOWED_SORT_ORDERS.join(", ")}.`, 400, "INVALID_PRODUCT_QUERY"));
   }
 
   next();

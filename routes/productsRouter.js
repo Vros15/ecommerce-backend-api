@@ -8,7 +8,7 @@ const { requireValidProductIdParam, validateProductQuery, validateCreateProductB
 router.post("/", validateCreateProductBody, createProduct);
 
 // Route to get all products
-//endpoint: GET /api/products?category=&search=&minPrice=&maxPrice=&inStock=&sort=&order=
+//endpoint: GET /api/products?category=&search=&minPrice=&maxPrice=&inStock=&sortBy=&sortOrder=
 router.get("/", validateProductQuery, getAllProducts);
 
 // Route to get a product by ID
