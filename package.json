@@ -15,7 +15,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test",
     "seed": "node seed/seed.js"
   },
   "repository": {
@@ -26,6 +26,9 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
   "bugs": {
     "url": "https://github.com/Vros15/EComerce-Backend-API/issues"
   },

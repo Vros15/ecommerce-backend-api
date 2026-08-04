@@ -28,9 +28,11 @@ This project demonstrates backend software engineering concepts including CRUD o
 - Order Processing
 - Query Filtering
 - Query Sorting
+- Pagination
 - Data Validation
 - Error Handling
 - Clean Project Architecture
+- Serverless and Long-Running Deployment Targets
 
 ---
 
@@ -111,10 +113,18 @@ Use this checklist to track production-readiness hardening work.
 
 ## Sprint 5 - Observability and Quality
 
-- [ ] Add `/health` endpoint
-- [ ] Add `/ready` endpoint with database readiness check
+- [x] Add `/health` endpoint
+- [x] Add `/ready` endpoint with database readiness check
 - [ ] Add smoke/integration tests for core API flows
 - [ ] Update API documentation for standardized error responses
+
+## Sprint 6 - Deployment and Product Query Support
+
+- [x] Split the Express app from the server entry point
+- [x] Cache the Mongoose connection for serverless reuse
+- [x] Add filtering, search, sorting, and pagination to `GET /api/products`
+- [x] Consolidate seed categories into a usable set
+- [ ] Deploy to Vercel and verify the catch-all rewrite
 
 ---
 
@@ -150,33 +160,65 @@ Complete CRUD functionality.
 - Update products
 - Delete products
 
-### Product Filtering
+### Query Parameters
 
-Supports filtering by:
+`GET /api/products` accepts the parameters below. Unknown parameters are rejected with `400` rather than ignored, so a typo surfaces immediately instead of returning an unfiltered result set.
 
-- Category
-- Minimum Price
-- Maximum Price
-- In-Stock Products
+| Parameter | Type | Description |
+|---|---|---|
+| `category` | string | Exact match, case-insensitive |
+| `search` | string | Matches `name` or `description`, case-insensitive |
+| `minPrice` | number | Inclusive lower bound, must be `>= 0` |
+| `maxPrice` | number | Inclusive upper bound, must be `>= minPrice` |
+| `inStock` | `true` or `false` | `true` returns `stock > 0`, `false` returns `stock === 0` |
+| `sortBy` | `price` or `name` | Field to sort on |
+| `sortOrder` | `asc` or `desc` | Defaults to `asc` |
+| `page` | integer | Defaults to `1` |
+| `limit` | integer | Defaults to `20`, maximum `100` |
 
-Example:
+Available categories:
+
+- Electronics
+- Audio
+- Home & Kitchen
+- Home Office
+- Apparel & Accessories
+- Fitness & Wellness
+
+Examples:
 
 ```http
 GET /api/products?category=Audio&minPrice=20&maxPrice=100&inStock=true
+GET /api/products?search=wireless&sortBy=price&sortOrder=desc
+GET /api/products?page=2&limit=6
 ```
 
-### Product Sorting
+Implementation notes:
 
-Supports sorting by:
+- Name sorting applies an `en` collation at strength 2. MongoDB compares strings by byte value by default, which sorts every capital ahead of every lowercase and would place `LED Desk Lamp` before `Laptop Backpack`.
+- `category` and `search` are escaped before being compiled into regular expressions.
+- Invalid values return `400` with code `INVALID_PRODUCT_QUERY` and a message naming the parameter at fault.
 
-- Price
-- Name
+### Pagination
 
-Example:
+Product responses include a `meta` block describing the result set:
 
-```http
-GET /api/products?sortBy=price&sortOrder=desc
+```json
+{
+    "message": "Products retrieved successfully",
+    "products": ["..."],
+    "meta": {
+        "total": 20,
+        "page": 1,
+        "limit": 20,
+        "totalPages": 1,
+        "hasNextPage": false,
+        "hasPreviousPage": false
+    }
+}
 ```
+
+`total` counts documents matching the active filter rather than the whole collection, so a filtered request reports the size of its own result set.
 
 ---
 
@@ -262,7 +304,7 @@ Current functionality:
 
 | Method | Endpoint | Description |
 |---------|----------|-------------|
-| GET | `/api/products` | Retrieve all products |
+| GET | `/api/products` | Retrieve products, with optional filtering, search, sorting, and pagination |
 | GET | `/api/products/:id` | Retrieve a product by ID |
 | POST | `/api/products` | Create a product |
 | PUT | `/api/products/:id` | Update a product |
@@ -300,6 +342,17 @@ Current functionality:
 | Method | Endpoint | Description |
 |---------|----------|-------------|
 | POST | `/api/orders/:customer` | Create an order from a customer's cart |
+
+---
+
+## Operational
+
+These sit outside `/api` and are therefore exempt from rate limiting, which makes `/health` a suitable target for an uptime monitor or keep-warm ping.
+
+| Method | Endpoint | Description |
+|---------|----------|-------------|
+| GET | `/health` | `200` while the process is running. Does not touch the database |
+| GET | `/ready` | `200` when MongoDB is reachable, `503` otherwise |
 
 ---
 
@@ -426,6 +479,8 @@ dns.setServers(["1.1.1.1", "8.8.8.8"]);
 ```text
 ECommerce-Backend-API
 │
+├── api/
+│   └── index.js          Vercel entry point, exports the app without listening
 ├── controllers/
 ├── database/
 ├── middlewares/
@@ -436,12 +491,17 @@ ECommerce-Backend-API
 │   └── seed.js
 ├── utils/
 ├── .env
+├── .env.example
 ├── .gitignore
-├── index.js
+├── app.js                Builds and exports the configured Express app
+├── index.js              Local and Render entry point, adds the listener
+├── vercel.json
 ├── package.json
 ├── package-lock.json
 └── README.md
 ```
+
+`app.js` holds every route and middleware. `index.js` and `api/index.js` are thin entry points that adapt it to a long-running server and a serverless function respectively, so both deployment targets run identical application code.
 
 ---
 
@@ -465,20 +525,28 @@ Install dependencies:
 npm install
 ```
 
-Create a `.env` file:
+Create a `.env` file. See `.env.example` for the full list with notes:
 
 ```env
 MONGODB_URI=your_connection_string
 # Optional
 PORT=3000
-RATE_LIMIT_MAX=100
-CORS_ORIGIN=http://localhost:3000
+RATE_LIMIT_MAX=1000
+CORS_ORIGIN=http://localhost:5173
 ```
+
+> `RATE_LIMIT_MAX` defaults to `100` per 15 minutes. That is easy to exhaust while developing a frontend, since React StrictMode double-fires effects and every hot reload refetches.
 
 Start the development server:
 
 ```bash
-node index.js
+npm start
+```
+
+Or with file watching:
+
+```bash
+npm run dev
 ```
 
 The API will be available at:
@@ -496,7 +564,6 @@ http://localhost:3000
 - Retrieve orders by customer
 - Filter orders by status
 - Update order status
-- Pagination
 - Automatically reduce product inventory after checkout
 - JWT Authentication
 - Password hashing with bcrypt
@@ -506,7 +573,51 @@ http://localhost:3000
 - Unit and integration testing with Jest
 - Swagger / OpenAPI documentation
 - Docker support
-- Deploy to Render
+
+---
+
+# Deployment History
+
+This API was first deployed to Render as a long-running Express server, then restructured to also run on Vercel as a serverless function. Both targets remain supported: `index.js` attaches a listener for a persistent server, `api/index.js` exports the same app for per-request invocation, and `app.js` holds the application code both share. The move was a hosting decision, not a rewrite.
+
+## Starting on Render
+
+Render matched how the code was already written. Express with a persistent process, a connection pool opened once at startup, graceful shutdown on `SIGINT` and `SIGTERM`, and in-memory rate limiting all behave the way they were designed to behave. Deployment was a build command and a start command, with no changes to the application.
+
+Measured warm, `GET /api/products` returned in roughly 230ms.
+
+## Why the Move
+
+The free tier spins a service down after roughly 15 minutes of inactivity and takes up to a minute to wake it.
+
+That penalty falls hardest on exactly this kind of project. A high-traffic service is rarely idle, so one visitor absorbs the wait and the rest are served warm. A portfolio API is idle almost all the time and receives isolated visits days apart, which means close to every visitor pays the full cold start. Low traffic does not reduce the problem; it makes it near-certain.
+
+The alternatives were a keep-warm ping, a paid instance, or a platform without the penalty. Serverless cold starts are roughly two orders of magnitude smaller, and the frontend that consumes this API deploys to Vercel already.
+
+## Trade-offs Accepted
+
+| | Render | Vercel |
+|---|---|---|
+| Cold start | 30–60s after idle | Approximately 1–2s |
+| Keep-warm ping | Required to avoid it | Not required |
+| Rate limiting | Enforced correctly | Per-instance, effectively advisory |
+| Connection model | One pool for the process lifetime | Cached per instance, reused while warm |
+| Graceful shutdown | Meaningful | Not applicable |
+| Cost to avoid cold starts | Paid instance or external monitor | None |
+
+## What the Move Cost
+
+**Rate limiting stopped being enforceable.** `express-rate-limit` stores counters in memory. Every serverless instance keeps its own, so the effective ceiling multiplies by instance count and resets whenever instances recycle. Restoring a real limit requires a shared store such as Redis. On Render the limit works as configured.
+
+**Connection handling required rework.** A serverless platform has no startup phase, so connecting once before listening is not available. The connection is cached on `globalThis` and established per request, with the in-flight promise cached rather than only the resolved connection, so concurrent requests arriving at a cold instance share a single attempt instead of opening one apiece. Without that, instance count multiplies straight into the Atlas connection limit.
+
+Simulating a cold instance locally, five concurrent requests opened exactly one connection and completed in roughly 700ms–1s including the Atlas handshake, against 35ms once warm.
+
+**Shutdown handling became inert.** The `SIGINT` and `SIGTERM` handlers still run under `index.js` and are simply unused on serverless.
+
+## Why Both Are Kept
+
+Splitting `app.js` from the entry points cost a few lines and keeps the decision reversible. Render remains a valid target if the rate limiter needs to be enforceable, and the same code serves both without branching on the environment.
 
 ---
 
@@ -556,3 +667,50 @@ Expected behavior:
 - Confirm all endpoints work locally with Atlas.
 - Verify order routes are hardened before exposing publicly.
 - Seed database only in non-production environments.
+
+> **Free tier note**
+>
+> Render free web services spin down after roughly 15 minutes of inactivity and take up to a minute to wake. A portfolio API is idle almost all the time, so nearly every visitor hits that delay. Pointing an uptime monitor at `/health` on a 10-minute interval avoids it. `/health` sits outside `/api`, so the ping consumes no rate limit budget and issues no database query.
+
+---
+
+# Deploy to Vercel
+
+The app runs as a single serverless function. `api/index.js` exports the Express instance without a listener, and `vercel.json` rewrites every path to it, so the existing router remains the only place routes are defined.
+
+## Vercel Project Settings
+
+- Framework Preset: `Other`
+- Build Command: leave empty
+- Output Directory: leave empty
+- Install Command: `npm install`
+
+## Required Environment Variables
+
+- `MONGODB_URI` = your MongoDB Atlas connection string
+
+## Optional Environment Variables
+
+- `RATE_LIMIT_MAX` = request cap per 15-minute window
+- `CORS_ORIGIN` = comma-separated allowed origins
+
+> **Preview deployments and CORS**
+>
+> Vercel assigns a unique URL to every branch and commit. A fixed `CORS_ORIGIN` list rejects all of them, so preview builds of a frontend will fail against a production API while working locally. Leaving `CORS_ORIGIN` unset falls through to `*`.
+
+## Serverless Considerations
+
+- The Mongoose connection is cached on `globalThis`, so warm invocations reuse it instead of opening a connection per request and exhausting the Atlas connection limit.
+- `express-rate-limit` keeps its counters in memory. Each instance has its own, so the effective limit scales with instance count and resets as instances recycle. A shared store is required for the limit to mean anything in this environment.
+- The `SIGINT` and `SIGTERM` handlers in `index.js` do not apply to serverless invocations.
+- `regions` in `vercel.json` should match the Atlas cluster region. A mismatch adds a round trip to every query.
+
+## Post-Deploy Smoke Checks
+
+```http
+GET /health
+GET /ready
+GET /api/products
+```
+
+`/api/products` also confirms the catch-all rewrite is reaching the Express router rather than returning a platform 404.
