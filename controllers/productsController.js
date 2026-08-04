@@ -2,6 +2,7 @@ const Product = require('../models/Product');
 const AppError = require('../utils/AppError');
 const asyncHandler = require('../utils/asyncHandler');
 const escapeRegex = require('../utils/escapeRegex');
+const { DEFAULT_PAGE, DEFAULT_LIMIT } = require('../utils/pagination');
 
 //POST create a new product
 const createProduct = asyncHandler(async (req, res) => {
@@ -15,7 +16,7 @@ const createProduct = asyncHandler(async (req, res) => {
 //GET all products, optionally filtered and sorted
 //Query params are validated upstream by validateProductQuery
 const getAllProducts = asyncHandler(async (req, res) => {
-    const { category, search, minPrice, maxPrice, inStock, sortBy, sortOrder } = req.query;
+    const { category, search, minPrice, maxPrice, inStock, sortBy, sortOrder, page, limit } = req.query;
 
     const filter = {};
 
@@ -57,9 +58,30 @@ const getAllProducts = asyncHandler(async (req, res) => {
         query.collation({ locale: "en", strength: 2 });
     }
 
-    const products = await query;
+    const currentPage = page !== undefined ? Number(page) : DEFAULT_PAGE;
+    const perPage = limit !== undefined ? Number(limit) : DEFAULT_LIMIT;
 
-    res.status(200).json({ message: "Products retrieved successfully", products });
+    query.skip((currentPage - 1) * perPage).limit(perPage);
+
+    //the count reflects the filter rather than the page, so the client can tell
+    //how many results exist beyond the slice it received
+    const [products, total] = await Promise.all([
+        query,
+        Product.countDocuments(filter),
+    ]);
+
+    res.status(200).json({
+        message: "Products retrieved successfully",
+        products,
+        meta: {
+            total,
+            page: currentPage,
+            limit: perPage,
+            totalPages: Math.ceil(total / perPage),
+            hasNextPage: currentPage * perPage < total,
+            hasPreviousPage: currentPage > 1,
+        },
+    });
 });
 
 //GET product by ID

@@ -1,14 +1,15 @@
 const mongoose = require("mongoose");
 const AppError = require("../utils/AppError");
+const { MAX_LIMIT } = require("../utils/pagination");
 
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
 
 const ALLOWED_SORT_FIELDS = ["price", "name"];
 const ALLOWED_SORT_ORDERS = ["asc", "desc"];
-const ALLOWED_QUERY_PARAMS = ["category", "search", "minPrice", "maxPrice", "inStock", "sortBy", "sortOrder"];
+const ALLOWED_QUERY_PARAMS = ["category", "search", "minPrice", "maxPrice", "inStock", "sortBy", "sortOrder", "page", "limit"];
 
 const validateProductQuery = (req, res, next) => {
-  const { category, search, minPrice, maxPrice, inStock, sortBy, sortOrder } = req.query;
+  const { category, search, minPrice, maxPrice, inStock, sortBy, sortOrder, page, limit } = req.query;
 
   // Rejecting unknown parameters turns a typo into a clear error instead of a
   // 200 that quietly ignored the filter the caller thought they applied.
@@ -26,7 +27,7 @@ const validateProductQuery = (req, res, next) => {
 
   // A repeated parameter such as ?category=a&category=b arrives as an array,
   // which would reach the query builder as an unexpected type.
-  const singleValueParams = { category, search, minPrice, maxPrice, inStock, sortBy, sortOrder };
+  const singleValueParams = { category, search, minPrice, maxPrice, inStock, sortBy, sortOrder, page, limit };
 
   for (const [key, value] of Object.entries(singleValueParams)) {
     if (value !== undefined && typeof value !== "string") {
@@ -79,6 +80,28 @@ const validateProductQuery = (req, res, next) => {
 
   if (sortOrder !== undefined && !ALLOWED_SORT_ORDERS.includes(sortOrder)) {
     return next(new AppError(`sortOrder must be one of: ${ALLOWED_SORT_ORDERS.join(", ")}.`, 400, "INVALID_PRODUCT_QUERY"));
+  }
+
+  for (const key of ["page", "limit"]) {
+    const raw = singleValueParams[key];
+
+    if (raw === undefined) {
+      continue;
+    }
+
+    if (raw.trim() === "") {
+      return next(new AppError(`${key} must be an integer greater than or equal to 1.`, 400, "INVALID_PRODUCT_QUERY"));
+    }
+
+    const parsed = Number(raw);
+
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      return next(new AppError(`${key} must be an integer greater than or equal to 1.`, 400, "INVALID_PRODUCT_QUERY"));
+    }
+
+    if (key === "limit" && parsed > MAX_LIMIT) {
+      return next(new AppError(`limit must not exceed ${MAX_LIMIT}.`, 400, "INVALID_PRODUCT_QUERY"));
+    }
   }
 
   next();
