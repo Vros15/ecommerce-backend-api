@@ -1,15 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const { createProduct,getAllProducts, getProductById, updateProductById,deleteProductById } = require('../controllers/productsController');
-const { requireValidProductIdParam, validateCreateProductBody, validateUpdateProductBody } = require('../middlewares/validateProductRequests');
+const { requireValidProductIdParam, validateProductQuery, validateCreateProductBody, validateUpdateProductBody } = require('../middlewares/validateProductRequests');
 
 // Route to create a new product
 //endpoint: POST /api/products
 router.post("/", validateCreateProductBody, createProduct);
 
 // Route to get all products
-//endpoint: GET /api/products
-router.get("/", getAllProducts);
+//endpoint: GET /api/products?category=&search=&minPrice=&maxPrice=&inStock=&sort=&order=
+router.get("/", validateProductQuery, getAllProducts);
 
 // Route to get a product by ID
 //endpoint: GET /api/products/:id
