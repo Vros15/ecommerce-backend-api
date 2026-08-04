@@ -9,6 +9,9 @@ const connectToMongoDB = require("./database/connectToMongoDB");
 const notFound = require("./middlewares/notFound");
 const errorHandler = require("./middlewares/errorHandler");
 
+// Render and other managed platforms terminate TLS and proxy requests.
+app.set("trust proxy", 1);
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: Number(process.env.RATE_LIMIT_MAX) || 100,
@@ -34,6 +37,30 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: "10kb" }));
 app.use(logger(`dev`));
 app.use("/api", limiter);
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Service is healthy",
+  });
+});
+
+app.get("/ready", (req, res) => {
+  const isReady = mongoose.connection.readyState === 1;
+
+  if (!isReady) {
+    return res.status(503).json({
+      success: false,
+      code: "NOT_READY",
+      message: "Database connection is not ready.",
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Service is ready",
+  });
+});
 
 app.use("/api/customers", require("./routes/customersRouter"));
 app.use("/api/products", require("./routes/productsRouter"));

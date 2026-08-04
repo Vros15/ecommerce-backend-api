@@ -507,3 +507,52 @@ http://localhost:3000
 - Swagger / OpenAPI documentation
 - Docker support
 - Deploy to Render
+
+---
+
+# Deploy to Render
+
+Use these settings when creating a new **Web Service** in Render.
+
+## Render Service Settings
+
+- Runtime: `Node`
+- Build Command: `npm install`
+- Start Command: `npm start`
+- Health Check Path: `/health`
+
+## Required Environment Variables
+
+- `MONGODB_URI` = your MongoDB Atlas connection string
+
+## Optional Environment Variables
+
+- `PORT` = leave empty in Render unless you have a special requirement (Render injects `PORT` automatically)
+- `RATE_LIMIT_MAX` = request cap per 15-minute window (default `100`)
+- `CORS_ORIGIN` = comma-separated allowed origins, for example:
+
+```env
+CORS_ORIGIN=https://your-frontend.onrender.com,https://yourdomain.com
+```
+
+## Post-Deploy Smoke Checks
+
+After deployment, validate:
+
+```http
+GET /health
+GET /ready
+GET /api/products
+```
+
+Expected behavior:
+
+- `/health` returns `200` when the API process is running.
+- `/ready` returns `200` when MongoDB is connected, otherwise `503`.
+
+## Pre-Push Checklist
+
+- Ensure `.env` is excluded from git.
+- Confirm all endpoints work locally with Atlas.
+- Verify order routes are hardened before exposing publicly.
+- Seed database only in non-production environments.
