@@ -6,6 +6,7 @@ const helmet = require("helmet");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const logger = require("morgan");
+const connectToMongoDB = require("./database/connectToMongoDB");
 const notFound = require("./middlewares/notFound");
 const errorHandler = require("./middlewares/errorHandler");
 
@@ -40,6 +41,18 @@ app.use(express.json({ limit: "10kb" }));
 app.use(logger(`dev`));
 app.use("/api", limiter);
 
+// A long-running server connects once before listening, so this resolves from
+// cache. On serverless there is no startup phase, so every request ensures the
+// connection itself. Mounted under /api so /health stays free of the database.
+app.use("/api", async (req, res, next) => {
+  try {
+    await connectToMongoDB();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/health", (req, res) => {
   res.status(200).json({
     success: true,
@@ -47,15 +60,24 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.get("/ready", (req, res) => {
-  const isReady = mongoose.connection.readyState === 1;
+app.get("/ready", async (req, res) => {
+  const notReady = {
+    success: false,
+    code: "NOT_READY",
+    message: "Database connection is not ready.",
+  };
 
-  if (!isReady) {
-    return res.status(503).json({
-      success: false,
-      code: "NOT_READY",
-      message: "Database connection is not ready.",
-    });
+  // Attempt the connection rather than only inspecting readyState. On serverless
+  // a cold invocation has not connected yet and would otherwise always report 503.
+  try {
+    await connectToMongoDB();
+  } catch {
+    return res.status(503).json(notReady);
+  }
+
+  // Guards the case where a cached connection has since dropped.
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json(notReady);
   }
 
   return res.status(200).json({
