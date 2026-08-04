@@ -1,0 +1,16 @@
+# Line endings are normalised to LF in the repository and in every working
+# copy, so behaviour does not depend on the core.autocrlf setting of whichever
+# machine cloned it. Without this, one contributor on CRLF can produce a diff
+# that reports every line of a file as changed.
+* text=auto eol=lf
+
+# Lockfiles are generated; keep them out of diffs and merge conflicts.
+package-lock.json -diff linguist-generated
+
+# Never apply text conversion to binary content.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
