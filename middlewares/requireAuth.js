@@ -1,11 +1,13 @@
 const { clerkMiddleware, getAuth } = require("@clerk/express");
 const AppError = require("../utils/AppError");
 
-// Clerk cannot verify a token without its secret key. Answering with an explicit
-// server error beats failing deep inside the SDK, and keeps the route closed
-// rather than open when the variable is missing from a deployment.
+// Clerk cannot verify a token without its keys — the secret key signs the check
+// and clerkMiddleware needs the publishable key to resolve the instance, so both
+// are required. Answering with an explicit server error beats failing deep
+// inside the SDK, and keeps the route closed rather than open when a deployment
+// is missing either variable.
 const requireClerkConfigured = (req, res, next) => {
-  if (!process.env.CLERK_SECRET_KEY) {
+  if (!process.env.CLERK_SECRET_KEY || !process.env.CLERK_PUBLISHABLE_KEY) {
     return next(new AppError("Authentication is not configured.", 500, "AUTH_NOT_CONFIGURED"));
   }
 
