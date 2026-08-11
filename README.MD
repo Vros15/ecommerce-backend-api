@@ -74,6 +74,7 @@ The API now includes incremental production-hardening improvements:
 - Route-not-found middleware (`404`)
 - Request validation middleware for carts, customers, and products
 - Security middleware: Helmet, CORS, JSON payload size limit, and API rate limiting (`429`)
+- Single-admin write protection on every `POST`/`PUT`/`DELETE` route (`401`/`403`). See [Admin Write Protection](#admin-write-protection)
 - Startup reliability improvements:
      - Fail-fast startup if MongoDB connection fails
      - Graceful shutdown on `SIGINT` and `SIGTERM`
@@ -125,6 +126,13 @@ Use this checklist to track production-readiness hardening work.
 - [x] Add filtering, search, sorting, and pagination to `GET /api/products`
 - [x] Consolidate seed categories into a usable set
 - [ ] Deploy to Vercel and verify the catch-all rewrite
+
+## Sprint 7 - Write Protection
+
+- [x] Add `requireAuth` and `requireAdmin` middleware
+- [x] Restrict every product, customer, cart, and order write to the admin account
+- [x] Cover the `401` and `403` boundaries with tests
+- [ ] Set the Clerk variables on Vercel and verify against the live deployment
 
 ---
 
@@ -292,6 +300,8 @@ Current functionality:
 | 200 | Success |
 | 201 | Resource Created |
 | 400 | Bad Request |
+| 401 | Not Signed In |
+| 403 | Signed In, Not the Admin |
 | 404 | Resource Not Found |
 | 429 | Too Many Requests |
 | 500 | Internal Server Error |
@@ -300,48 +310,50 @@ Current functionality:
 
 # API Endpoints
 
+Every read is public. Every write requires the admin session described in [Admin Write Protection](#admin-write-protection).
+
 ## Products
 
-| Method | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/api/products` | Retrieve products, with optional filtering, search, sorting, and pagination |
-| GET | `/api/products/:id` | Retrieve a product by ID |
-| POST | `/api/products` | Create a product |
-| PUT | `/api/products/:id` | Update a product |
-| DELETE | `/api/products/:id` | Delete a product |
+| Method | Endpoint | Access | Description |
+|---------|----------|--------|-------------|
+| GET | `/api/products` | Public | Retrieve products, with optional filtering, search, sorting, and pagination |
+| GET | `/api/products/:id` | Public | Retrieve a product by ID |
+| POST | `/api/products` | Admin | Create a product |
+| PUT | `/api/products/:id` | Admin | Update a product |
+| DELETE | `/api/products/:id` | Admin | Delete a product |
 
 ---
 
 ## Customers
 
-| Method | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/api/customers` | Retrieve all customers |
-| GET | `/api/customers/:id` | Retrieve customer by ID |
-| POST | `/api/customers` | Create customer |
-| PUT | `/api/customers/:id` | Update customer |
-| DELETE | `/api/customers/:id` | Delete customer |
+| Method | Endpoint | Access | Description |
+|---------|----------|--------|-------------|
+| GET | `/api/customers` | Public | Retrieve all customers |
+| GET | `/api/customers/:id` | Public | Retrieve customer by ID |
+| POST | `/api/customers` | Admin | Create customer |
+| PUT | `/api/customers/:id` | Admin | Update customer |
+| DELETE | `/api/customers/:id` | Admin | Delete customer |
 
 ---
 
 ## Shopping Cart
 
-| Method | Endpoint | Description |
-|---------|----------|-------------|
-| POST | `/api/carts` | Create a shopping cart |
-| GET | `/api/carts/:customer` | Retrieve a customer's cart |
-| POST | `/api/carts/:customer/products` | Add product to cart |
-| PUT | `/api/carts/:customer/products` | Update product quantity |
-| DELETE | `/api/carts/:customer/products` | Remove product from cart |
-| DELETE | `/api/carts/:customer/clear` | Clear shopping cart |
+| Method | Endpoint | Access | Description |
+|---------|----------|--------|-------------|
+| POST | `/api/carts` | Admin | Create a shopping cart |
+| GET | `/api/carts/:customer` | Public | Retrieve a customer's cart |
+| POST | `/api/carts/:customer/products` | Admin | Add product to cart |
+| PUT | `/api/carts/:customer/products` | Admin | Update product quantity |
+| DELETE | `/api/carts/:customer/products` | Admin | Remove product from cart |
+| DELETE | `/api/carts/:customer/clear` | Admin | Clear shopping cart |
 
 ---
 
 ## Orders
 
-| Method | Endpoint | Description |
-|---------|----------|-------------|
-| POST | `/api/orders/:customer` | Create an order from a customer's cart |
+| Method | Endpoint | Access | Description |
+|---------|----------|--------|-------------|
+| POST | `/api/orders/:customer` | Admin | Create an order from a customer's cart |
 
 ---
 
@@ -353,6 +365,64 @@ These sit outside `/api` and are therefore exempt from rate limiting, which make
 |---------|----------|-------------|
 | GET | `/health` | `200` while the process is running. Does not touch the database |
 | GET | `/ready` | `200` when MongoDB is reachable, `503` otherwise |
+
+---
+
+# Admin Write Protection
+
+Every `POST`, `PUT`, and `DELETE` route is restricted to a single account. Every `GET` route is public, so the storefront stays browsable with no login.
+
+This is deliberately narrower than general user authentication. The problem being solved is "a stranger can delete the catalogue", not "this API needs roles and permissions", so there is one admin, named by an environment variable, and no users or roles table.
+
+## How It Works
+
+Two middlewares stack in front of each write route, because authentication and authorisation are different questions:
+
+| Middleware | Question | Failure |
+|---|---|---|
+| `requireAuth()` | Does this request carry a valid, unexpired Clerk session token? | `401` `UNAUTHENTICATED` |
+| `requireAdmin` | Does that token belong to `ADMIN_USER_ID`? | `403` `FORBIDDEN` |
+
+```js
+router.post("/", requireAuth(), requireAdmin, validateCreateProductBody, createProduct);
+```
+
+Both run before the validation middleware, so an anonymous caller learns nothing about the shape of a valid request body.
+
+Anyone can still create a Clerk account and sign in. A session on its own grants zero write access — it only becomes useful if a future customer-facing feature, such as order history, needs a signed-in customer to exist.
+
+> **A note on `requireAuth()`**
+>
+> Clerk's own `requireAuth()` is deprecated in `@clerk/express` v2 and redirects an unauthenticated caller to a sign-in page, which is meaningless to an API client expecting JSON. `middlewares/requireAuth.js` composes the pieces it wrapped — `clerkMiddleware()` to read the token, then an explicit check — and answers `401` instead.
+
+## Setup
+
+1. Create an application at [clerk.com](https://clerk.com).
+2. From **API keys** in the Clerk dashboard, copy the **Secret key** (`sk_...`) and the **Publishable key** (`pk_...`) into `CLERK_SECRET_KEY` and `CLERK_PUBLISHABLE_KEY`. The secret key is a password — never commit it.
+3. Sign in once as the account that should own the catalogue, then open **Users** in the Clerk dashboard and copy that account's user ID (`user_...`) into `ADMIN_USER_ID`.
+
+Leaving any of the three unset closes the write routes rather than opening them: missing Clerk keys return `500` `AUTH_NOT_CONFIGURED`, and a missing `ADMIN_USER_ID` returns `500` `ADMIN_NOT_CONFIGURED`.
+
+## Verifying It
+
+A write needs a real session token, sent as a bearer token:
+
+```bash
+curl -X POST https://your-api/api/products -H "Authorization: Bearer <session-token>" -H "Content-Type: application/json" -d "{}"
+```
+
+| Request | Expected |
+|---|---|
+| `GET /api/products`, no header | `200` |
+| `POST /api/products`, no header | `401` |
+| `POST /api/products`, token for any other account | `403` |
+| `POST /api/products`, token for `ADMIN_USER_ID` | `201` |
+
+Run the automated coverage with `npm test`. `tests/adminAuth.test.js` fakes the Clerk request object, so it checks the `403` boundary and every unauthenticated write without needing real credentials.
+
+## Known Consequence
+
+Cart and order writes are admin-only too, which is correct today because nothing but the admin writes them. A future storefront cart, where a shopper adds items themselves, will need those specific routes to accept any signed-in customer rather than only the admin.
 
 ---
 
@@ -529,11 +599,17 @@ Create a `.env` file. See `.env.example` for the full list with notes:
 
 ```env
 MONGODB_URI=your_connection_string
+# Required for write routes. See Admin Write Protection
+CLERK_SECRET_KEY=sk_test_your_clerk_secret_key
+CLERK_PUBLISHABLE_KEY=pk_test_your_clerk_publishable_key
+ADMIN_USER_ID=user_your_clerk_user_id
 # Optional
 PORT=3000
 RATE_LIMIT_MAX=1000
 CORS_ORIGIN=http://localhost:5173
 ```
+
+> The Clerk variables are only needed to make writes work. Without them the API still starts and serves every `GET`; writes answer `500` `AUTH_NOT_CONFIGURED` instead of running.
 
 > `RATE_LIMIT_MAX` defaults to `100` per 15 minutes. That is easy to exhaust while developing a frontend, since React StrictMode double-fires effects and every hot reload refetches.
 
@@ -565,10 +641,12 @@ http://localhost:3000
 - Filter orders by status
 - Update order status
 - Automatically reduce product inventory after checkout
-- JWT Authentication
-- Password hashing with bcrypt
-- User authentication
-- Role-based authorization
+- Customer-owned cart writes, so a signed-in shopper can manage their own cart
+  without the admin session that every write currently requires
+- Password hashing with bcrypt (only needed if auth moves off Clerk)
+- Soft delete for products (`isActive` flag instead of removing the document) -
+  a defense-in-depth safety net on top of admin auth, not required to stop an
+  unauthenticated stranger
 - Complete orders validation middleware coverage
 - Unit and integration testing with Jest
 - Swagger / OpenAPI documentation
@@ -623,6 +701,8 @@ Splitting `app.js` from the entry points cost a few lines and keeps the decision
 
 # Deploy to Render
 
+> **Retired.** Vercel is the only deployment this project runs on now. This section is kept because the code still supports a long-running server — `index.js` attaches a listener — and because the rate limiter only behaves correctly there. Nothing here is set up or maintained.
+
 Use these settings when creating a new **Web Service** in Render.
 
 ## Render Service Settings
@@ -635,6 +715,7 @@ Use these settings when creating a new **Web Service** in Render.
 ## Required Environment Variables
 
 - `MONGODB_URI` = your MongoDB Atlas connection string
+- The Clerk variables listed under [Deploy to Vercel](#deploy-to-vercel), if writes need to work on a Render instance
 
 ## Optional Environment Variables
 
@@ -654,12 +735,14 @@ After deployment, validate:
 GET /health
 GET /ready
 GET /api/products
+POST /api/products
 ```
 
 Expected behavior:
 
 - `/health` returns `200` when the API process is running.
 - `/ready` returns `200` when MongoDB is connected, otherwise `503`.
+- `POST /api/products` with no `Authorization` header returns `401`. A `500` means the Clerk variables are missing from this environment.
 
 ## Pre-Push Checklist
 
@@ -688,6 +771,11 @@ The app runs as a single serverless function. `api/index.js` exports the Express
 ## Required Environment Variables
 
 - `MONGODB_URI` = your MongoDB Atlas connection string
+- `CLERK_SECRET_KEY` = Clerk Secret key (`sk_...`)
+- `CLERK_PUBLISHABLE_KEY` = Clerk Publishable key (`pk_...`)
+- `ADMIN_USER_ID` = Clerk user ID (`user_...`) of the one account allowed to write
+
+Set these for every environment the project has (Production, Preview, Development). A preview deploy missing them serves reads normally and answers `500` on writes. See [Admin Write Protection](#admin-write-protection) for where the values come from.
 
 ## Optional Environment Variables
 
@@ -711,6 +799,9 @@ The app runs as a single serverless function. `api/index.js` exports the Express
 GET /health
 GET /ready
 GET /api/products
+POST /api/products
 ```
 
 `/api/products` also confirms the catch-all rewrite is reaching the Express router rather than returning a platform 404.
+
+`POST /api/products` with no `Authorization` header must return `401`. A `500` means the Clerk variables are missing from this environment, and a `201` means the write routes are open.
