@@ -1,16 +1,20 @@
 const express = require("express");
 const router = express.Router();
-const { createCheckoutSession } = require("../controllers/checkoutController");
+const { createCheckoutSession, getCheckoutSession } = require("../controllers/checkoutController");
 const { validateCheckoutBody } = require("../middlewares/validateCheckoutRequest");
 const requireStripeConfigured = require("../middlewares/requireStripeConfigured");
 
-// No requireAuth/requireAdmin here, unlike every other write route in this
-// API - this doesn't write to our own database, it asks Stripe to open a
-// payment page, and in a real store any shopper (signed in or not) can
-// check out.
+// No requireAuth/requireAdmin on either route, unlike every other write
+// route in this API - neither writes to our own database, and a session id
+// is Stripe-generated and effectively unguessable.
 
 // POST create a Stripe Checkout Session for the given cart items
 // endpoint: POST /api/checkout
 router.post("/", requireStripeConfigured, validateCheckoutBody, createCheckoutSession);
+
+// GET a completed session's real line items and total, for the
+// confirmation page
+// endpoint: GET /api/checkout/session/:sessionId
+router.get("/session/:sessionId", requireStripeConfigured, getCheckoutSession);
 
 module.exports = router;
