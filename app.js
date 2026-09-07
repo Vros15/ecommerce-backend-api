@@ -90,6 +90,7 @@ app.use("/api/customers", require("./routes/customersRouter"));
 app.use("/api/products", require("./routes/productsRouter"));
 app.use("/api/carts", require("./routes/cartsRouter"));
 app.use("/api/orders", require("./routes/ordersRouter"));
+app.use("/api/checkout", require("./routes/checkoutRouter"));
 
 app.use(notFound);
 app.use(errorHandler);
