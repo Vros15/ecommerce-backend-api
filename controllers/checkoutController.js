@@ -54,7 +54,11 @@ const createCheckoutSession = asyncHandler(async (req, res) => {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     line_items: lineItems,
-    success_url: `${frontendUrl}/cart?checkout=success`,
+    // {CHECKOUT_SESSION_ID} is a literal Stripe placeholder, substituted
+    // with the real session id on redirect - the confirmation page uses it
+    // to fetch what was actually charged, not just whatever the client-side
+    // cart happened to contain when checkout was clicked.
+    success_url: `${frontendUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${frontendUrl}/cart?checkout=cancelled`,
     // Managed Payments (on by default on newer Stripe accounts) requires a
     // tax_code on every line item, meant for real tax compliance - not
@@ -68,4 +72,40 @@ const createCheckoutSession = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { createCheckoutSession };
+/**
+ * Retrieves a completed Checkout Session's real line items and total, for
+ * the confirmation page to display. No admin lock, matching
+ * createCheckoutSession - a session id is Stripe-generated and effectively
+ * unguessable, and reveals nothing beyond what was in that one purchase.
+ */
+const getCheckoutSession = asyncHandler(async (req, res) => {
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const { sessionId } = req.params;
+
+  if (!sessionId.startsWith("cs_")) {
+    throw new AppError("Invalid checkout session id.", 400, "INVALID_SESSION_ID");
+  }
+
+  const session = await stripe.checkout.sessions
+    .retrieve(sessionId)
+    .catch(() => null);
+
+  if (!session) {
+    throw new AppError("Checkout session not found.", 404, "SESSION_NOT_FOUND");
+  }
+
+  const lineItems = await stripe.checkout.sessions.listLineItems(sessionId);
+
+  res.status(200).json({
+    message: "Checkout session retrieved successfully.",
+    paid: session.payment_status === "paid",
+    total: session.amount_total / 100,
+    items: lineItems.data.map((item) => ({
+      name: item.description,
+      quantity: item.quantity,
+      amount: item.amount_total / 100,
+    })),
+  });
+});
+
+module.exports = { createCheckoutSession, getCheckoutSession };
