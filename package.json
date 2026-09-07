@@ -7,7 +7,8 @@
     "express-rate-limit": "^8.6.0",
     "helmet": "^8.3.0",
     "mongoose": "^9.7.4",
-    "morgan": "^1.11.0"
+    "morgan": "^1.11.0",
+    "stripe": "^22.6.1"
   },
   "name": "ecomerce-backend-api",
   "version": "1.0.0",
