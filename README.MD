@@ -134,6 +134,49 @@ Use this checklist to track production-readiness hardening work.
 - [x] Cover the `401` and `403` boundaries with tests
 - [ ] Set the Clerk variables on Vercel and verify against the live deployment
 
+## Sprint 8 - Stripe Checkout
+
+- [x] Add `POST /api/checkout` - creates a Stripe Checkout Session (test
+      mode) for a given set of cart items
+- [x] Re-derive every price from the database and check requested quantity
+      against real stock - a client-submitted price or quantity is never
+      trusted
+- [x] No admin lock on this route, unlike every other write in this API - it
+      doesn't write to this API's own database, and any shopper should be
+      able to check out
+- [x] Fix: construct the Stripe client per request, not at module scope -
+      the SDK throws synchronously in its constructor with no key present,
+      which crashed the app on `require()` alone before this
+- [x] Fix: disable Managed Payments for the session - on by default on newer
+      Stripe accounts, requires a tax code per line item, and this test-mode
+      demo has no real tax compliance to manage
+
+## Sprint 9 - Order Identity and Webhooks (Planned)
+
+The frontend's cart is client-side only and Clerk-authenticated shoppers
+have no `Customer` record, so there is currently no way to attach a
+completed payment to a real `Order`, or to answer "what has this shopper
+bought." Picked up here tomorrow.
+
+- [ ] Add an optional `clerkUserId` field to the `Order` model, alongside
+      the existing `customer` reference (left as-is for whatever the
+      original admin-only order flow still needs it for)
+- [ ] Add an "optional auth" middleware to `/api/checkout` - reads the
+      shopper's Clerk id when signed in, without rejecting guest checkouts;
+      passes it through as Stripe session metadata
+- [ ] Add `STRIPE_WEBHOOK_SECRET` and a new `POST /api/webhooks/stripe`
+      endpoint - verifies Stripe's signature (needs the raw request body,
+      not JSON-parsed), listens for `checkout.session.completed`, and
+      creates the real `Order` from the session. This is the actual proof a
+      payment happened, not the frontend's `?checkout=success` redirect,
+      which anyone could reach by typing the URL without ever paying
+- [ ] Add `GET /api/orders/me` - requires real sign-in, filters strictly by
+      the verified token's user id, never a client-supplied one (otherwise
+      one shopper could read another's orders by editing a query param)
+- [ ] Verify the full loop against a real webhook delivery (Stripe CLI
+      forwarding to `localhost`, or the live Vercel endpoint directly, which
+      Stripe can already reach), not just the checkout redirect
+
 ---
 
 # Mongoose Features Used
