@@ -151,31 +151,36 @@ Use this checklist to track production-readiness hardening work.
       Stripe accounts, requires a tax code per line item, and this test-mode
       demo has no real tax compliance to manage
 
-## Sprint 9 - Order Identity and Webhooks (Planned)
+## Sprint 9 - Order Identity and Webhooks
 
 The frontend's cart is client-side only and Clerk-authenticated shoppers
-have no `Customer` record, so there is currently no way to attach a
+have no `Customer` record, so there was previously no way to attach a
 completed payment to a real `Order`, or to answer "what has this shopper
-bought." Picked up here tomorrow.
+bought."
 
-- [ ] Add an optional `clerkUserId` field to the `Order` model, alongside
+- [x] Add an optional `clerkUserId` field to the `Order` model, alongside
       the existing `customer` reference (left as-is for whatever the
-      original admin-only order flow still needs it for)
-- [ ] Add an "optional auth" middleware to `/api/checkout` - reads the
+      original admin-only order flow still needs it for). Also added
+      `stripeSessionId` (unique, sparse), which doubles as the webhook's
+      idempotency key
+- [x] Add an "optional auth" middleware to `/api/checkout` - reads the
       shopper's Clerk id when signed in, without rejecting guest checkouts;
       passes it through as Stripe session metadata
-- [ ] Add `STRIPE_WEBHOOK_SECRET` and a new `POST /api/webhooks/stripe`
+- [x] Add `STRIPE_WEBHOOK_SECRET` and a new `POST /api/webhooks/stripe`
       endpoint - verifies Stripe's signature (needs the raw request body,
       not JSON-parsed), listens for `checkout.session.completed`, and
       creates the real `Order` from the session. This is the actual proof a
       payment happened, not the frontend's `?checkout=success` redirect,
       which anyone could reach by typing the URL without ever paying
-- [ ] Add `GET /api/orders/me` - requires real sign-in, filters strictly by
+- [x] Add `GET /api/orders/me` - requires real sign-in, filters strictly by
       the verified token's user id, never a client-supplied one (otherwise
-      one shopper could read another's orders by editing a query param)
-- [ ] Verify the full loop against a real webhook delivery (Stripe CLI
-      forwarding to `localhost`, or the live Vercel endpoint directly, which
-      Stripe can already reach), not just the checkout redirect
+      one shopper could read another's orders by editing a query param).
+      Registered ahead of the existing `/:orderId` route so Express doesn't
+      match `me` as an order id
+- [x] Verified the full loop against a real webhook delivery on the live
+      Vercel endpoint: signed in, paid with a real test card, confirmed the
+      webhook fired and created an `Order` with the correct `clerkUserId`,
+      confirmed it appeared under `GET /api/orders/me` for that account
 
 ---
 
@@ -397,6 +402,15 @@ Every read is public. Every write requires the admin session described in [Admin
 | Method | Endpoint | Access | Description |
 |---------|----------|--------|-------------|
 | POST | `/api/orders/:customer` | Admin | Create an order from a customer's cart |
+| GET | `/api/orders/me` | Signed in | Retrieve the signed-in shopper's own orders |
+
+---
+
+## Webhooks
+
+| Method | Endpoint | Access | Description |
+|---------|----------|--------|-------------|
+| POST | `/api/webhooks/stripe` | Stripe only | Verifies Stripe's signature and creates an `Order` on `checkout.session.completed` |
 
 ---
 
