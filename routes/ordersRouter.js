@@ -3,7 +3,7 @@
 // Import the Express router and the orders controller
 const express = require("express");
 const router = express.Router();
-const {createOrderFromCart,getAllOrders,getOrderById, updateOrderById,deleteOrderById  } = require("../controllers/ordersController");
+const {createOrderFromCart,getAllOrders,getMyOrders,getOrderById, updateOrderById,deleteOrderById  } = require("../controllers/ordersController");
 const requireAuth = require("../middlewares/requireAuth");
 const requireAdmin = require("../middlewares/requireAdmin");
 
@@ -16,6 +16,12 @@ router.post("/:customer", requireAuth(), requireAdmin, createOrderFromCart);
 //GET all orders & Filter by status
 //endpoint: GET /order?status=pending
 router.get("/", getAllOrders);
+
+// GET the signed-in shopper's own orders. Registered ahead of /:orderId
+// below - otherwise Express would match "me" as an :orderId value instead
+// of reaching this route at all.
+// endpoint: GET /api/orders/me
+router.get("/me", requireAuth(), getMyOrders);
 
 //GET a single order by ID
 //endpoint: GET /order/:orderId
