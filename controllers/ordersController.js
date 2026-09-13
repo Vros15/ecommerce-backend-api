@@ -1,185 +1,122 @@
-//TODO: Implement the orders controller functions for creating, retrieving, updating, and deleting orders.
 const { getAuth } = require("@clerk/express");
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
+const AppError = require("../utils/AppError");
+const asyncHandler = require("../utils/asyncHandler");
+
+// Create a new order from a customer's cart
+const createOrderFromCart = asyncHandler(async (req, res) => {
+    const { customer } = req.params;
+
+    const cart = await Cart.findOne({ customer }).populate("products.productId");
+
+    if (!cart) {
+        throw new AppError("Cart not found for this customer.", 404, "CART_NOT_FOUND");
+    }
+
+    if (cart.products.length === 0) {
+        throw new AppError("Cart is empty.", 400, "EMPTY_CART");
+    }
+
+    const totalPrice = Number(
+        cart.products
+            .reduce((total, item) => total + item.quantity * item.productId.price, 0)
+            .toFixed(2)
+    );
+
+    const newOrder = await Order.create({
+        customer,
+        products: cart.products.map((item) => ({
+            productId: item.productId._id,
+            quantity: item.quantity,
+        })),
+        totalPrice,
+    });
+
+    await Cart.findOneAndUpdate({ customer }, { $set: { products: [] } });
+
+    res.status(201).json({
+        message: "Order created successfully.",
+        order: newOrder,
+    });
+});
+
+// Retrieve all orders, optionally filtered by status
+const getAllOrders = asyncHandler(async (req, res) => {
+    const { status } = req.query;
+    const filter = status ? { status } : {};
+
+    const orders = await Order.find(filter).populate("products.productId");
+
+    res.status(200).json({
+        message: "Orders retrieved successfully.",
+        orders,
+    });
+});
 
 // Retrieve the signed-in shopper's own orders - filtered strictly by the
 // verified token's user id, never a client-supplied one, so one shopper
 // can't read another's orders by editing a query param. These are the
 // orders the Stripe webhook created, so there is no admin-created,
 // customer-referenced order in this list.
-const getMyOrders = async (req, res) => {
-    try {
-        const { userId } = getAuth(req);
+const getMyOrders = asyncHandler(async (req, res) => {
+    const { userId } = getAuth(req);
 
-        const orders = await Order.find({ clerkUserId: userId })
-            .populate("products.productId")
-            .sort({ createdAt: -1 });
+    const orders = await Order.find({ clerkUserId: userId })
+        .populate("products.productId")
+        .sort({ createdAt: -1 });
 
-        res.status(200).json({
-            message: "Orders retrieved successfully.",
-            orders
-        });
-    } catch (error) {
-        res.status(500).json({
-            message: "Error retrieving orders.",
-            error: error.message
-        });
+    res.status(200).json({
+        message: "Orders retrieved successfully.",
+        orders,
+    });
+});
+
+// Retrieve a single order by ID
+const getOrderById = asyncHandler(async (req, res) => {
+    const { orderId } = req.params;
+    const order = await Order.findById(orderId).populate("products.productId");
+
+    if (!order) {
+        throw new AppError("Order not found.", 404, "ORDER_NOT_FOUND");
     }
-};
 
-// Function to create a new order from the cart 
-// Create a new order from a customer's cart
-const createOrderFromCart = async (req, res) => {
-    try {
-        const { customer } = req.params;
+    res.status(200).json({
+        message: "Order retrieved successfully.",
+        order,
+    });
+});
 
-        // Find the customer's cart and populate product details
-        const cart = await Cart.findOne({ customer })
-            .populate("products.productId");
+// Update an order's status by ID
+const updateOrderById = asyncHandler(async (req, res) => {
+    const { orderId } = req.params;
+    const { status } = req.body;
 
-        // Check if the cart exists
-        if (!cart) {
-            return res.status(404).json({
-                message: "Cart not found for this customer."
-            });
-        }
+    const updatedOrder = await Order.findByIdAndUpdate(orderId, { status }, { new: true });
 
-        // Check if the cart is empty
-        if (cart.products.length === 0) {
-            return res.status(400).json({
-                message: "Cart is empty."
-            });
-        }
-
-        // Calculate the total price
-        const totalPrice = Number(
-            cart.products
-                .reduce(
-                    (total, item) =>
-                        total + item.quantity * item.productId.price,
-                    0
-                )
-                .toFixed(2)
-        );
-
-        // Create the order
-        const newOrder = await Order.create({
-            customer,
-            products: cart.products.map(item => ({
-                productId: item.productId._id,
-                quantity: item.quantity
-            })),
-            totalPrice
-        });
-
-        // Clear the customer's cart
-        await Cart.findOneAndUpdate(
-            { customer },
-            {
-                $set: {
-                    products: []
-                }
-            }
-        );
-
-        // Return the newly created order
-        res.status(201).json({
-            message: "Order created successfully.",
-            order: newOrder
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            message: "Error creating order.",
-            error: error.message
-        });
+    if (!updatedOrder) {
+        throw new AppError("Order not found.", 404, "ORDER_NOT_FOUND");
     }
-};
 
+    res.status(200).json({
+        message: "Order updated successfully.",
+        order: updatedOrder,
+    });
+});
 
+// Delete an order by ID
+const deleteOrderById = asyncHandler(async (req, res) => {
+    const { orderId } = req.params;
+    const deletedOrder = await Order.findByIdAndDelete(orderId);
 
-// Function to retrieve all orders
-const getAllOrders = async (req, res) => {
-    try {
-        const orders = await Order.find().populate("products.productId");
-        res.status(200).json({
-            message: "Orders retrieved successfully.",
-            orders
-        });
-    } catch (error) {
-        res.status(500).json({
-            message: "Error retrieving orders.",
-            error: error.message
-        });
+    if (!deletedOrder) {
+        throw new AppError("Order not found.", 404, "ORDER_NOT_FOUND");
     }
-};
 
-// Function to retrieve a single order by ID
-const getOrderById = async (req, res) => {
-    try {
-        const { orderId } = req.params;
-        const order = await Order.findById(orderId).populate("products.productId");
-        if (!order) {
-            return res.status(404).json({
-                message: "Order not found."
-            });
-        }
-        res.status(200).json({
-            message: "Order retrieved successfully.",
-            order
-        });
-    } catch (error) {
-        res.status(500).json({
-            message: "Error retrieving order.",
-            error: error.message
-        });
-    }
-};
+    res.status(200).json({
+        message: "Order deleted successfully.",
+        order: deletedOrder,
+    });
+});
 
-// Function to update an order by ID
-const updateOrderById = async (req, res) => {
-    try {
-        const { orderId } = req.params;
-        const updatedOrder = await Order.findByIdAndUpdate(orderId, req.body, { new: true });
-        if (!updatedOrder) {
-            return res.status(404).json({
-                message: "Order not found."
-            });
-        }
-        res.status(200).json({
-            message: "Order updated successfully.",
-            order: updatedOrder
-        });
-    } catch (error) {
-        res.status(500).json({
-            message: "Error updating order.",
-            error: error.message
-        });
-    }
-};
-
-// Function to delete an order by ID
-const deleteOrderById = async (req, res) => {
-    try {
-        const { orderId } = req.params;
-        const deletedOrder = await Order.findByIdAndDelete(orderId);
-        if (!deletedOrder) {
-            return res.status(404).json({
-                message: "Order not found."
-            });
-        }
-        res.status(200).json({
-            message: "Order deleted successfully.",
-            order: deletedOrder
-        });
-    } catch (error) {
-        res.status(500).json({
-            message: "Error deleting order.",
-            error: error.message
-        });
-    }
-};
-
-// Export the controller functions for use in the routes
 module.exports = { createOrderFromCart, getAllOrders, getMyOrders, getOrderById, updateOrderById, deleteOrderById };
