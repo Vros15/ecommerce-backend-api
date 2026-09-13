@@ -11,7 +11,7 @@
     "stripe": "^22.6.1"
   },
   "name": "ecomerce-backend-api",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "",
   "main": "index.js",
   "scripts": {
