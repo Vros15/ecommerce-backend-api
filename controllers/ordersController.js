@@ -1,6 +1,32 @@
 //TODO: Implement the orders controller functions for creating, retrieving, updating, and deleting orders.
+const { getAuth } = require("@clerk/express");
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
+
+// Retrieve the signed-in shopper's own orders - filtered strictly by the
+// verified token's user id, never a client-supplied one, so one shopper
+// can't read another's orders by editing a query param. These are the
+// orders the Stripe webhook created, so there is no admin-created,
+// customer-referenced order in this list.
+const getMyOrders = async (req, res) => {
+    try {
+        const { userId } = getAuth(req);
+
+        const orders = await Order.find({ clerkUserId: userId })
+            .populate("products.productId")
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({
+            message: "Orders retrieved successfully.",
+            orders
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error retrieving orders.",
+            error: error.message
+        });
+    }
+};
 
 // Function to create a new order from the cart 
 // Create a new order from a customer's cart
@@ -156,4 +182,4 @@ const deleteOrderById = async (req, res) => {
 };
 
 // Export the controller functions for use in the routes
-module.exports = { createOrderFromCart,getAllOrders,getOrderById, updateOrderById, deleteOrderById };
+module.exports = { createOrderFromCart, getAllOrders, getMyOrders, getOrderById, updateOrderById, deleteOrderById };
