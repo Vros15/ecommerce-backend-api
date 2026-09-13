@@ -37,6 +37,17 @@ const corsOptions = {
 
 app.use(helmet());
 app.use(cors(corsOptions));
+
+// Mounted ahead of express.json() below - Stripe's signature covers the
+// exact raw request bytes, so this route needs the unparsed body. It also
+// connects to MongoDB itself rather than relying on the shared "/api"
+// middleware further down, since a request handled here never reaches it.
+app.use(
+  "/api/webhooks/stripe",
+  express.raw({ type: "application/json" }),
+  require("./routes/webhooksRouter")
+);
+
 app.use(express.json({ limit: "10kb" }));
 app.use(logger(`dev`));
 app.use("/api", limiter);
