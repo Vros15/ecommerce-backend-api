@@ -72,16 +72,12 @@ The API now includes incremental production-hardening improvements:
 - Centralized error handling with a shared error response format
 - Async controller wrapper to forward promise errors consistently
 - Route-not-found middleware (`404`)
-- Request validation middleware for carts, customers, and products
+- Request validation middleware for carts, customers, products, and orders
 - Security middleware: Helmet, CORS, JSON payload size limit, and API rate limiting (`429`)
 - Single-admin write protection on every `POST`/`PUT`/`DELETE` route (`401`/`403`). See [Admin Write Protection](#admin-write-protection)
 - Startup reliability improvements:
      - Fail-fast startup if MongoDB connection fails
      - Graceful shutdown on `SIGINT` and `SIGTERM`
-
-> **In progress**
->
-> Orders hardening is tracked in a dedicated branch and will be merged after validation and controller refactor are completed.
 
 ---
 
@@ -106,11 +102,10 @@ Use this checklist to track production-readiness hardening work.
 - [x] Add product request validation middleware and route wiring
 - [x] Migrate products controller to centralized error handling
 
-## Sprint 4 - Orders Hardening (Current)
+## Sprint 4 - Orders Hardening
 
-- [ ] Add order request validation middleware and route wiring
-- [ ] Migrate orders controller to centralized error handling
-- [ ] Merge `orders-hardening` into `main`
+- [x] Add order request validation middleware and route wiring
+- [x] Migrate orders controller to centralized error handling
 
 ## Sprint 5 - Observability and Quality
 
@@ -125,14 +120,14 @@ Use this checklist to track production-readiness hardening work.
 - [x] Cache the Mongoose connection for serverless reuse
 - [x] Add filtering, search, sorting, and pagination to `GET /api/products`
 - [x] Consolidate seed categories into a usable set
-- [ ] Deploy to Vercel and verify the catch-all rewrite
+- [x] Deploy to Vercel and verify the catch-all rewrite
 
 ## Sprint 7 - Write Protection
 
 - [x] Add `requireAuth` and `requireAdmin` middleware
 - [x] Restrict every product, customer, cart, and order write to the admin account
 - [x] Cover the `401` and `403` boundaries with tests
-- [ ] Set the Clerk variables on Vercel and verify against the live deployment
+- [x] Set the Clerk variables on Vercel and verify against the live deployment
 
 ## Sprint 8 - Stripe Checkout
 
