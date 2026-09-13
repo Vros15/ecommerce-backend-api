@@ -64,6 +64,15 @@ const createCheckoutSession = asyncHandler(async (req, res) => {
     // tax_code on every line item, meant for real tax compliance - not
     // something a test-mode portfolio demo needs.
     managed_payments: { enabled: false },
+    // Carried through to the checkout.session.completed webhook, which is
+    // the only place an Order actually gets created - metadata values must
+    // be strings, so the cart is round-tripped as JSON.
+    metadata: {
+      clerkUserId: req.clerkUserId || "",
+      items: JSON.stringify(
+        items.map((item) => ({ productId: item.productId, quantity: item.quantity }))
+      ),
+    },
   });
 
   res.status(200).json({
