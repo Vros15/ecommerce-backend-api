@@ -11,7 +11,8 @@ const {
 const requireAuth = require("../middlewares/requireAuth");
 const requireAdmin = require("../middlewares/requireAdmin");
 
-// Every write is restricted to the single admin account; GET stays public.
+// Every route is admin-only, reads included: a cart populates its customer's
+// personal details, and the storefront's cart is client-side, not this one.
 
 // Route to create a new cart
 //endpoint: POST /api/carts
@@ -19,7 +20,7 @@ router.post("/", requireAuth(), requireAdmin, validateCreateCartBody, createOneC
 
 // Route to get a cart by customer
 //endpoint: GET /api/carts/:customer
-router.get("/:customer", requireValidCustomerParam, getCart);
+router.get("/:customer", requireAuth(), requireAdmin, requireValidCustomerParam, getCart);
 
 // Route to add a product to a cart by customer
 //endpoint: POST /api/carts/:customer/products
