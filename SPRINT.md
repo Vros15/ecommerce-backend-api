@@ -130,7 +130,7 @@ Only the API work is listed here.
 
 ## Sprint 10 - Security Prerequisites
 
-- [ ] Restrict order, customer, and cart read endpoints to admin access
+- [x] Restrict order, customer, and cart read endpoints to admin access
       (the storefront only uses `GET /api/orders/me`)
 - [ ] Generic error message for unexpected `500`s, real message only for
       known `AppError`s
