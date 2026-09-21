@@ -10,10 +10,10 @@ const {
   validateUpdateOrderBody,
 } = require("../middlewares/validateOrderRequests");
 
-// Every write is restricted to the single admin account; GET stays public.
-// Auth and admin checks run ahead of validation on every write, matching
+// Every route is admin-only except GET /me, which returns only the caller's
+// own orders. Auth and admin checks run ahead of validation, matching
 // products/carts - a stranger should learn nothing about the shape of a
-// valid request body.
+// valid request.
 
 //POST create a new order
 //endpoint: POST /order/:customer
@@ -21,7 +21,7 @@ router.post("/:customer", requireAuth(), requireAdmin, requireValidCustomerParam
 
 //GET all orders & Filter by status
 //endpoint: GET /order?status=pending
-router.get("/", getAllOrders);
+router.get("/", requireAuth(), requireAdmin, getAllOrders);
 
 // GET the signed-in shopper's own orders. Registered ahead of /:orderId
 // below - otherwise Express would match "me" as an :orderId value instead
@@ -31,7 +31,7 @@ router.get("/me", requireAuth(), getMyOrders);
 
 //GET a single order by ID
 //endpoint: GET /order/:orderId
-router.get("/:orderId", requireValidOrderIdParam, getOrderById);
+router.get("/:orderId", requireAuth(), requireAdmin, requireValidOrderIdParam, getOrderById);
 
 //PUT update status of an order by ID
 //endpoint: PUT /order/:orderId
