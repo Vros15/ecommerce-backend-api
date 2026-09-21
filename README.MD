@@ -81,101 +81,29 @@ The API now includes incremental production-hardening improvements:
 
 ---
 
-# Sprint Roadmap
+# Roadmap
 
-Use this checklist to track production-readiness hardening work.
+Full task-by-task plan and status: [`SPRINT.md`](./SPRINT.md).
 
-## Sprint 1 - Platform and Cart Hardening
+### Shipped
 
-- [x] Add centralized error pipeline (`AppError`, `asyncHandler`, `notFound`, `errorHandler`)
-- [x] Add fail-fast startup and graceful shutdown
-- [x] Add cart request validation middleware and route wiring
-- [x] Add baseline security middleware (Helmet, CORS, rate limiting, JSON body limit)
+- Centralized error handling and request validation across products,
+  customers, carts, and orders
+- Filtering, search, sorting, and pagination on `GET /api/products`
+- Serverless deployment on Vercel, with the long-running server still supported
+- Single-admin write protection through Clerk
+- Stripe test-mode checkout, with orders created by a signature-verified webhook
+- `GET /api/orders/me`, a signed-in shopper's own order history
 
-## Sprint 2 - Customer Hardening
+### Coming next: AI-assisted refund support
 
-- [x] Add customer request validation middleware and route wiring
-- [x] Migrate customer controller to centralized error handling
-
-## Sprint 3 - Product Hardening
-
-- [x] Add product request validation middleware and route wiring
-- [x] Migrate products controller to centralized error handling
-
-## Sprint 4 - Orders Hardening
-
-- [x] Add order request validation middleware and route wiring
-- [x] Migrate orders controller to centralized error handling
-
-## Sprint 5 - Observability and Quality
-
-- [x] Add `/health` endpoint
-- [x] Add `/ready` endpoint with database readiness check
-- [ ] Add smoke/integration tests for core API flows
-- [ ] Update API documentation for standardized error responses
-
-## Sprint 6 - Deployment and Product Query Support
-
-- [x] Split the Express app from the server entry point
-- [x] Cache the Mongoose connection for serverless reuse
-- [x] Add filtering, search, sorting, and pagination to `GET /api/products`
-- [x] Consolidate seed categories into a usable set
-- [x] Deploy to Vercel and verify the catch-all rewrite
-
-## Sprint 7 - Write Protection
-
-- [x] Add `requireAuth` and `requireAdmin` middleware
-- [x] Restrict every product, customer, cart, and order write to the admin account
-- [x] Cover the `401` and `403` boundaries with tests
-- [x] Set the Clerk variables on Vercel and verify against the live deployment
-
-## Sprint 8 - Stripe Checkout
-
-- [x] Add `POST /api/checkout` - creates a Stripe Checkout Session (test
-      mode) for a given set of cart items
-- [x] Re-derive every price from the database and check requested quantity
-      against real stock - a client-submitted price or quantity is never
-      trusted
-- [x] No admin lock on this route, unlike every other write in this API - it
-      doesn't write to this API's own database, and any shopper should be
-      able to check out
-- [x] Fix: construct the Stripe client per request, not at module scope -
-      the SDK throws synchronously in its constructor with no key present,
-      which crashed the app on `require()` alone before this
-- [x] Fix: disable Managed Payments for the session - on by default on newer
-      Stripe accounts, requires a tax code per line item, and this test-mode
-      demo has no real tax compliance to manage
-
-## Sprint 9 - Order Identity and Webhooks
-
-The frontend's cart is client-side only and Clerk-authenticated shoppers
-have no `Customer` record, so there was previously no way to attach a
-completed payment to a real `Order`, or to answer "what has this shopper
-bought."
-
-- [x] Add an optional `clerkUserId` field to the `Order` model, alongside
-      the existing `customer` reference (left as-is for whatever the
-      original admin-only order flow still needs it for). Also added
-      `stripeSessionId` (unique, sparse), which doubles as the webhook's
-      idempotency key
-- [x] Add an "optional auth" middleware to `/api/checkout` - reads the
-      shopper's Clerk id when signed in, without rejecting guest checkouts;
-      passes it through as Stripe session metadata
-- [x] Add `STRIPE_WEBHOOK_SECRET` and a new `POST /api/webhooks/stripe`
-      endpoint - verifies Stripe's signature (needs the raw request body,
-      not JSON-parsed), listens for `checkout.session.completed`, and
-      creates the real `Order` from the session. This is the actual proof a
-      payment happened, not the frontend's `?checkout=success` redirect,
-      which anyone could reach by typing the URL without ever paying
-- [x] Add `GET /api/orders/me` - requires real sign-in, filters strictly by
-      the verified token's user id, never a client-supplied one (otherwise
-      one shopper could read another's orders by editing a query param).
-      Registered ahead of the existing `/:orderId` route so Express doesn't
-      match `me` as an order id
-- [x] Verified the full loop against a real webhook delivery on the live
-      Vercel endpoint: signed in, paid with a real test card, confirmed the
-      webhook fired and created an `Order` with the correct `clerkUserId`,
-      confirmed it appeared under `GET /api/orders/me` for that account
+A support chat for the storefront, starting with refunds. The API looks up
+MegaMart's written policies with RAG (embeddings plus MongoDB Atlas Vector
+Search), identifies the order from the shopper's own account, checks it
+against a refund policy written in code, and opens a ticket for a person to
+approve. The AI never moves money: approved refunds run through Stripe from
+backend code that re-checks everything itself. Sprints 10 to 17 in
+[`SPRINT.md`](./SPRINT.md) break this down step by step.
 
 ---
 
@@ -620,7 +548,8 @@ ECommerce-Backend-API
 ├── vercel.json
 ├── package.json
 ├── package-lock.json
-└── README.md
+├── README.md
+└── SPRINT.md             Task-by-task plan and status
 ```
 
 `app.js` holds every route and middleware. `index.js` and `api/index.js` are thin entry points that adapt it to a long-running server and a serverless function respectively, so both deployment targets run identical application code.
