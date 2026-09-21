@@ -129,11 +129,34 @@ describe("write routes", () => {
     assert.equal(body.code, "UNAUTHENTICATED");
   });
 
-  test("leave read routes public", async () => {
-    for (const path of ["/api/products?limit=1", "/api/customers", "/api/orders"]) {
-      const { status } = await request("GET", path, null);
+  test("leave product reads public", async () => {
+    const { status } = await request("GET", "/api/products?limit=1", null);
 
-      assert.equal(status, 200, `expected 200 for GET ${path}`);
+    assert.equal(status, 200);
+  });
+
+  test("reject every unauthenticated read of customer, cart, and order data with 401", async () => {
+    const protectedReads = [
+      "/api/customers",
+      `/api/customers/${ID}`,
+      `/api/carts/${ID}`,
+      "/api/orders",
+      `/api/orders/${ID}`,
+      "/api/orders/me",
+    ];
+
+    for (const path of protectedReads) {
+      const { status, body } = await request("GET", path, null);
+
+      assert.equal(status, 401, `expected 401 for GET ${path}`);
+      assert.equal(body.code, "UNAUTHENTICATED", `expected UNAUTHENTICATED for GET ${path}`);
     }
+  });
+
+  test("reject a protected read before validating its id", async () => {
+    const { status, body } = await request("GET", "/api/orders/not-an-object-id", null);
+
+    assert.equal(status, 401);
+    assert.equal(body.code, "UNAUTHENTICATED");
   });
 });
