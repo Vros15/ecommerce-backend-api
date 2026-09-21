@@ -5,7 +5,8 @@ const { requireValidIdParam, validateCreateCustomerBody, validateUpdateCustomerB
 const requireAuth = require("../middlewares/requireAuth");
 const requireAdmin = require("../middlewares/requireAdmin");
 
-// Every write is restricted to the single admin account; GET stays public.
+// Every route is admin-only, reads included: customer records hold names,
+// emails, addresses, and phone numbers, and nothing in the storefront reads them.
 
 // Route to create a new customer
 //endpoint: POST /api/customers
@@ -13,11 +14,11 @@ router.post("/", requireAuth(), requireAdmin, validateCreateCustomerBody, create
 
 // Route to get all customers
 //endpoint: GET /api/customers
-router.get("/", getAllCustomers);
+router.get("/", requireAuth(), requireAdmin, getAllCustomers);
 
 // Route to get a customer by ID
 //endpoint: GET /api/customers/:id
-router.get("/:id", requireValidIdParam, getCustomerById);
+router.get("/:id", requireAuth(), requireAdmin, requireValidIdParam, getCustomerById);
 
 // Route to update a customer by ID
 //endpoint: PUT /api/customers/:id
