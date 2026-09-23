@@ -1,8 +1,8 @@
-const Stripe = require("stripe");
 const Order = require("../models/Order");
 const connectToMongoDB = require("../database/connectToMongoDB");
 const AppError = require("../utils/AppError");
 const asyncHandler = require("../utils/asyncHandler");
+const { createStripeClient } = require("../utils/createStripeClient");
 
 /**
  * The actual proof a payment happened - not the frontend's
@@ -20,7 +20,7 @@ const handleStripeWebhook = asyncHandler(async (req, res) => {
     throw new AppError("Stripe webhooks are not configured.", 500, "WEBHOOK_NOT_CONFIGURED");
   }
 
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const stripe = createStripeClient();
   const signature = req.headers["stripe-signature"];
 
   let event;

@@ -1,7 +1,7 @@
-const Stripe = require("stripe");
 const Product = require("../models/Product");
 const AppError = require("../utils/AppError");
 const asyncHandler = require("../utils/asyncHandler");
+const { createStripeClient } = require("../utils/createStripeClient");
 
 /**
  * Creates a Stripe Checkout Session (test mode - whatever key is configured)
@@ -10,11 +10,7 @@ const asyncHandler = require("../utils/asyncHandler");
  * Cart/Customer record to attach this to yet.
  */
 const createCheckoutSession = asyncHandler(async (req, res) => {
-  // Constructed per call, not at module scope - the Stripe SDK throws
-  // synchronously in its constructor when no key is present, which would
-  // crash on require() alone, before requireStripeConfigured ever runs.
-  // A missing key still fails safely: requireStripeConfigured 500s first.
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const stripe = createStripeClient();
 
   const { items } = req.body;
 
@@ -88,7 +84,7 @@ const createCheckoutSession = asyncHandler(async (req, res) => {
  * unguessable, and reveals nothing beyond what was in that one purchase.
  */
 const getCheckoutSession = asyncHandler(async (req, res) => {
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const stripe = createStripeClient();
   const { sessionId } = req.params;
 
   if (!sessionId.startsWith("cs_")) {
