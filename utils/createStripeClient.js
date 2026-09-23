@@ -1,10 +1,5 @@
 const Stripe = require("stripe");
 
-// The Stripe API version this code was written and verified against. Without
-// it, the account's default version applies: changing that in the Stripe
-// dashboard, or upgrading the SDK, would silently change the shape of every
-// object read here (a renamed field on a Checkout Session, a moved property
-// on a refund) with no code change to point at.
 const STRIPE_API_VERSION = "2026-08-26.dahlia";
 
 /**
