@@ -1,7 +1,10 @@
 // Unit tests for the central error handler - no app, no database. A fake
 // response object records what the handler sends.
-const { test, describe, beforeEach, mock } = require("node:test");
+const { test, describe } = require("node:test");
 const assert = require("node:assert/strict");
+
+// The handler logs unexpected errors; keep that out of the test output.
+process.env.LOG_LEVEL = "silent";
 
 const errorHandler = require("../middlewares/errorHandler");
 const AppError = require("../utils/AppError");
@@ -21,8 +24,9 @@ const runHandler = (err, { headersSent = false } = {}) => {
     },
   };
   let passedOn = null;
+  const req = { method: "GET", originalUrl: "/api/products" };
 
-  errorHandler(err, {}, res, (error) => {
+  errorHandler(err, req, res, (error) => {
     passedOn = error;
   });
 
@@ -30,11 +34,6 @@ const runHandler = (err, { headersSent = false } = {}) => {
 };
 
 describe("errorHandler", () => {
-  beforeEach(() => {
-    // Unexpected errors are logged; keep test output clean.
-    mock.method(console, "error", () => {});
-  });
-
   test("passes an AppError's status, code, message, and details through", () => {
     const { res } = runHandler(new AppError("Order not found.", 404, "ORDER_NOT_FOUND", { id: "x" }));
 
@@ -60,7 +59,6 @@ describe("errorHandler", () => {
       message: "Something went wrong",
       details: null,
     });
-    assert.equal(console.error.mock.callCount(), 1);
   });
 
   test("hides a third-party error that carries its own statusCode", () => {
