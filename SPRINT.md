@@ -133,9 +133,9 @@ its repo; the storefront tracks the chat and desk UI in
 
 - [x] Restrict order, customer, and cart read endpoints to admin access
       (the storefront only uses `GET /api/orders/me`)
-- [ ] Generic error message for unexpected `500`s, real message only for
+- [x] Generic error message for unexpected `500`s, real message only for
       known `AppError`s
-- [ ] Separate test database, and fix the failing product-count test
+- [x] Separate test database, and fix the failing product-count test
 - [ ] Shared Stripe client with a pinned API version
 - [ ] Small structured JSON logger for all new code
 
