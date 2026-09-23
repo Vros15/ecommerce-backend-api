@@ -97,13 +97,16 @@ Full task-by-task plan and status: [`SPRINT.md`](./SPRINT.md).
 
 ### Coming next: AI-assisted refund support
 
-A support chat for the storefront, starting with refunds. The API looks up
-MegaMart's written policies with RAG (embeddings plus MongoDB Atlas Vector
-Search), identifies the order from the shopper's own account, checks it
-against a refund policy written in code, and opens a ticket for a person to
-approve. The AI never moves money: approved refunds run through Stripe from
-backend code that re-checks everything itself. Sprints 10 to 17 in
-[`SPRINT.md`](./SPRINT.md) break this down step by step.
+A support chat for the storefront, starting with refunds. The AI work lives
+in a separate Python service (`megamart-ai-service`): FastAPI, retrieval over
+MegaMart's written policies, and PostgreSQL with pgvector for the embeddings.
+
+This API stays the source of truth for orders, tickets, and money. The AI
+service reads a shopper's own orders and opens refund tickets by forwarding
+that shopper's Clerk token, so it never holds admin rights here and cannot
+issue a refund. A support agent approves, and this API executes the refund
+after re-checking the order, the payment, and the refund policy itself.
+Sprints 10 to 13 in [`SPRINT.md`](./SPRINT.md) are this API's share.
 
 ---
 

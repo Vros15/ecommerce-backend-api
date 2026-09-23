@@ -9,7 +9,7 @@ What the API does today, and how to run it, is in the [README](./README.MD).
 ---
 
 Sprints 1 to 9 cover production hardening and the core commerce features.
-Sprints 10 to 17 add AI-assisted refund support.
+Sprints 10 to 13 are this API's share of the AI-assisted refund support work.
 
 ## Sprint 1 - Platform and Cart Hardening
 
@@ -103,30 +103,31 @@ bought."
       webhook fired and created an `Order` with the correct `clerkUserId`,
       confirmed it appeared under `GET /api/orders/me` for that account
 
-## Up Next - AI-Assisted Refund Support (Sprints 10 to 17)
+## Up Next - AI-Assisted Refund Support (Sprints 10 to 13)
 
-A support chat for the storefront, starting with refunds. A signed-in shopper
-describes a problem ("my headphones arrived broken"), and the API looks up
-MegaMart's written policies (RAG), finds the right order from the shopper's
-own account, checks it against a refund policy written in code, and opens a
-ticket for a person to approve.
+MegaMart is adding an AI support chat, starting with refunds. The AI work
+lives in a separate Python service (`megamart-ai-service`): FastAPI,
+retrieval-augmented generation over MegaMart's written policies, and
+PostgreSQL with pgvector for the embeddings.
 
-| Piece | Job |
-|---|---|
-| RAG (policy documents + vector search) | "What does MegaMart policy say?" |
-| LLM (Claude) | Understands the message, asks follow-up questions, writes answers grounded in the retrieved policy |
-| API code | "What is actually true?" Identity, order ownership, payment status, refund amount |
-| Policy engine | Hard rules: ownership, paid, refund window, refundable amount |
-| Decision provider | Continue, ask for more info, send to a person, or not eligible. Swappable, built so a dedicated decision model (JEV) can be evaluated later |
-| Support agent | Approves or denies. **The AI never moves money** |
+**This API stays the source of truth for orders, tickets, and money.** The AI
+service can read a shopper's own orders and open a refund ticket, always by
+forwarding that shopper's own Clerk token, so it never holds admin rights
+here. It cannot issue refunds. A support agent approves, and this API
+executes the refund after re-checking the order, the payment, and the refund
+policy itself.
 
-No AI framework (LangChain and similar): chunking, embeddings, retrieval,
-prompt assembly, and evaluation are small, readable modules in this repo.
+```text
+React chat --Clerk token--> AI service --same Clerk token--> this API
+                                                               |
+                                                    requireAuth + owner scoping
 
-These sprints match Sprints 5 to 12 in the storefront's
-[`SPRINT.md`](https://github.com/Vros15/megamart-react-storefront/blob/main/SPRINT.md),
-which also tracks the frontend tasks (chat page, ticket pages, support desk).
-Only the API work is listed here.
+Agent approves --> this API: revalidate -> idempotent Stripe refund -> audit
+```
+
+Sprints below are this API's share. The AI service tracks its own sprints in
+its repo; the storefront tracks the chat and desk UI in
+[`megamart-react-storefront/SPRINT.md`](https://github.com/Vros15/megamart-react-storefront/blob/main/SPRINT.md).
 
 ## Sprint 10 - Security Prerequisites
 
@@ -138,102 +139,40 @@ Only the API work is listed here.
 - [ ] Shared Stripe client with a pinned API version
 - [ ] Small structured JSON logger for all new code
 
-## Sprint 11 - RAG Foundation
+## Sprint 11 - Order Facts for the AI Service
 
-- [ ] Confirm MongoDB Atlas Vector Search is available on the cluster, and
-      pick the embedding model (Voyage AI)
-- [ ] Policy documents in `knowledge/` (refunds, damaged products,
-      duplicate charges, returns, cancellations, shipping, FAQ), each with a
-      version and effective date
-- [ ] `config/refundPolicy.js` holds the hard numbers, plus a test that
-      fails if the written policy and the config disagree
-- [ ] `EmbeddingProvider` with a real and a fake (offline) implementation
-- [ ] `KnowledgeDocument` and `KnowledgeChunk` models
-- [ ] Chunker that splits on headings so each chunk is one policy section,
-      with configurable size and overlap
-- [ ] Ingestion script (`npm run ingest:knowledge`): load, clean, block
-      anything that looks like a secret, skip unchanged docs, chunk, embed,
-      store, mark old versions as superseded. A script only, never an HTTP
-      route
-- [ ] `Retriever` with Atlas Vector Search and an in-memory version for
-      tests; every result carries its source and version
-- [ ] Retrieval evaluation (`npm run eval:retrieval`) with 30 labelled
-      questions, reporting how often the right policy comes back
-
-## Sprint 12 - Grounded Support Chat
-
-- [ ] `LLMProvider` (Claude, via `@anthropic-ai/sdk`) with a fake for tests,
-      timeouts, and bounded retries
-- [ ] `Conversation`, `Message`, and `AiDecision` models
-- [ ] AI gateway middleware: sign-in required, per-user message limits
-      stored in MongoDB (the in-memory rate limiter doesn't hold on
-      serverless), message length cap, closed unless the AI key is set
-- [ ] Intent detection with schema-validated output (refund or not,
-      reason, order hint, what's missing)
-- [ ] Prompt assembly with clearly labelled sections, policy text treated
-      as data, not instructions
-- [ ] Grounded reply that must cite the policy chunks it used, and a fixed
-      "let me get a person" reply when no policy matches
-- [ ] Support orchestrator (code-driven workflow, the AI gets no tools of
-      its own) and `POST /api/support/chat`
-- [ ] Raise the Vercel function timeout based on measured latency
-- [ ] Chat evaluation (`npm run eval:support`) including prompt-injection
-      attempts, with latency and token counts
-
-## Sprint 13 - Trusted Refund Context
-
-- [ ] Add payment details to `Order` (Stripe payment intent id, amount in
-      cents, payment status, amount refunded, line-item snapshot)
+- [ ] Add payment details to `Order`: Stripe payment intent id, amount in
+      cents, payment status, amount refunded, and a line-item snapshot
 - [ ] Webhook saves those, only for sessions Stripe reports as paid, and
       reads line items from Stripe instead of session metadata
 - [ ] One-time backfill script for existing orders
-- [ ] Match the shopper's description to one of **their own** orders, and
-      ask when it's ambiguous
-- [ ] Refund context from the order plus live Stripe data
-- [ ] Refund policy engine as a pure, fully tested function
-- [ ] Evaluation cases for someone else's order, an expired window, and an
-      already-refunded order
+- [ ] `GET /api/orders/me/:orderId`, one of the caller's own orders, with a
+      response shaped for support use (no internal ids beyond the order
+      number)
+- [ ] Tests: another shopper's order id returns the same `404` as a
+      nonexistent one
 
-## Sprint 14 - Decisions and Ticket Escalation
+## Sprint 12 - Tickets, Approval, and Refunds
 
-- [ ] `DecisionProvider` interface with a rules-based version; any provider
-      can only send a case toward human review, never past a failed policy
-      check
-- [ ] `Ticket` and `AuditEvent` models, ticket state machine
-- [ ] Automatic ticket creation with the full case attached: conversation
-      summary, policy references, policy result, recommendation, reason for
-      escalation
+- [ ] `Ticket`, `Refund`, and `AuditEvent` models, plus a ticket state
+      machine
+- [ ] `POST /api/support/tickets`: a signed-in shopper (or the AI service
+      acting with that shopper's token) opens a refund request
 - [ ] Shopper ticket routes: list, detail, reply
-
-## Sprint 15 - Support Desk API
-
 - [ ] `requireRole()` using a Clerk role claim (`admin`, `support_agent`);
-      `requireAdmin` becomes `requireRole("admin")`, with `ADMIN_USER_ID`
-      kept as a fallback
-- [ ] Ticket queue and detail routes under `/api/admin/support/tickets`
-- [ ] Deny and request-info actions, each recorded in the audit trail
-
-## Sprint 16 - Stripe Test Refunds
-
-- [ ] `Refund` model, one per ticket
+      `requireAdmin` becomes `requireRole("admin")`
+- [ ] Agent routes: ticket queue, ticket detail, deny, request info
 - [ ] Refund service: reloads the ticket, order, and payment, re-checks the
       policy, calculates the amount itself, then refunds through Stripe with
       an idempotency key so it can only happen once
-- [ ] Approve route, plus `charge.refunded` / `refund.updated` webhook
-      handling to confirm the final result
-- [ ] Tests for double approval, concurrent approval, an order refunded
-      elsewhere, and a Stripe failure followed by a retry
+- [ ] Refund webhooks (`charge.refunded`, `refund.updated`) reconcile state
+- [ ] Every ticket transition and refund attempt written to the audit trail
 
-## Sprint 17 - Evaluation and Hardening
+## Sprint 13 - Authorization Hardening
 
-- [ ] Grow the evaluation set to 50+ cases (target 100+), one report
-      covering intent accuracy, retrieval quality, made-up answer rate,
-      escalation accuracy, security, latency, and cost
-- [ ] Failure tests: AI timeout, bad AI output, embedding outage, missing
-      search index, rate limits
-- [ ] Tune model settings from the evaluation numbers
-- [ ] Support metrics endpoint, including how often agents agree with the
-      AI's recommendation
-- [ ] `docs/ai/` write-ups for the shipped system (RAG, refund workflow,
-      security, evaluation)
-
+- [ ] Cross-user tests: reading another shopper's ticket or order, opening a
+      ticket against an order that isn't theirs
+- [ ] Refund abuse tests: double approval, concurrent approval, an order
+      already refunded elsewhere, a Stripe failure followed by a retry
+- [ ] Confirm the AI service cannot reach any admin route with a shopper
+      token
