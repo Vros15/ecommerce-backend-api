@@ -1,3 +1,5 @@
+const logger = require("../utils/logger");
+
 // Only two kinds of error are safe to describe to a caller: our own AppErrors,
 // and client errors Express's body parser marks `expose` (malformed JSON, body
 // too large). Anything else - a MongoDB or Stripe SDK error, a runtime bug -
@@ -12,7 +14,9 @@ const errorHandler = (err, req, res, next) => {
   }
 
   if (!isSafeToExpose(err)) {
-    console.error(err);
+    // The caller gets a generic 500, so this line is the only record of what
+    // actually failed. It carries the route, to make that line findable.
+    logger.error("request.failed", { method: req.method, path: req.originalUrl }, err);
 
     return res.status(500).json({
       success: false,
