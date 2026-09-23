@@ -1,16 +1,20 @@
 // Tests for the single-admin write protection. The requireAdmin cases are unit
-// tests against a faked Clerk request; the route cases boot the app and run
-// unauthenticated requests, so they need MONGODB_URI like the other suite. No
-// real Clerk credentials are needed: rejecting a caller never verifies a token.
+// tests against a faked Clerk request; the route cases boot the app against the
+// test database, like the other suite. No real Clerk credentials are needed:
+// rejecting a caller never verifies a token.
 const { test, before, after, describe } = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
-const mongoose = require("mongoose");
+
+const { useTestDatabase, seedTestProducts, closeTestDatabase } = require("./helpers/testDatabase");
 
 // clerkMiddleware refuses to start without keys, and the routers build their
 // middleware when required, so these must be set before the app is loaded.
 process.env.CLERK_SECRET_KEY ||= "sk_test_0000000000000000000000000000000000000000";
 process.env.CLERK_PUBLISHABLE_KEY ||= "pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk";
+
+// Must run before the app is required, so it connects to the test database.
+useTestDatabase("adminauth");
 
 const requireAdmin = require("../middlewares/requireAdmin");
 const app = require("../app");
@@ -72,7 +76,7 @@ describe("write routes", () => {
   let baseUrl;
 
   before(async () => {
-    assert.ok(process.env.MONGODB_URI, "MONGODB_URI must be set to run these tests");
+    await seedTestProducts();
 
     server = http.createServer(app);
     await new Promise((resolve) => server.listen(0, resolve));
@@ -81,7 +85,7 @@ describe("write routes", () => {
 
   after(async () => {
     await new Promise((resolve) => server.close(resolve));
-    await mongoose.connection.close();
+    await closeTestDatabase();
   });
 
   const request = async (method, path, body) => {
