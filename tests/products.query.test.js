@@ -1,10 +1,19 @@
-// Smoke tests for GET /api/products. These run against the database named by
-// MONGODB_URI and assume the seeded catalogue, so they are integration tests
-// rather than unit tests. They read only and create nothing.
+// Integration tests for GET /api/products. They run against the throwaway
+// database named by MONGODB_URI_TEST, seeded with the fixture catalogue in
+// tests/fixtures/products.js, so every assertion describes known data.
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
-const mongoose = require("mongoose");
+
+const {
+  useTestDatabase,
+  seedTestProducts,
+  closeTestDatabase,
+  testProducts,
+} = require("./helpers/testDatabase");
+
+// Must run before the app is required, so it connects to the test database.
+useTestDatabase("products");
 
 const app = require("../app");
 
@@ -12,7 +21,7 @@ let server;
 let baseUrl;
 
 before(async () => {
-  assert.ok(process.env.MONGODB_URI, "MONGODB_URI must be set to run these tests");
+  await seedTestProducts();
 
   server = http.createServer(app);
 
@@ -24,7 +33,7 @@ before(async () => {
 
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
-  await mongoose.connection.close();
+  await closeTestDatabase();
 });
 
 const get = async (query = "") => {
@@ -36,9 +45,11 @@ test("returns the full catalogue with no parameters", async () => {
   const { status, body } = await get();
 
   assert.equal(status, 200);
-  assert.ok(Array.isArray(body.products));
-  assert.ok(body.products.length > 0);
-  assert.equal(body.meta.total, body.products.length);
+  assert.equal(body.meta.total, testProducts.length);
+  // meta.total counts the whole result set; the array holds one page of it.
+  // Asserting the two are equal only holds while the catalogue is smaller
+  // than the default limit, which is what broke this test at 21 products.
+  assert.equal(body.products.length, Math.min(body.meta.total, body.meta.limit));
 });
 
 test("filters by category, case-insensitively", async () => {
