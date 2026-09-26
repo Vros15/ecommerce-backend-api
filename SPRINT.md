@@ -136,8 +136,8 @@ its repo; the storefront tracks the chat and desk UI in
 - [x] Generic error message for unexpected `500`s, real message only for
       known `AppError`s
 - [x] Separate test database, and fix the failing product-count test
-- [ ] Shared Stripe client with a pinned API version
-- [ ] Small structured JSON logger for all new code
+- [x] Shared Stripe client with a pinned API version
+- [x] Small structured JSON logger for all new code
 
 ## Sprint 11 - Order Facts for the AI Service
 

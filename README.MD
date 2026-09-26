@@ -1,791 +1,330 @@
-# MegaMart E-Commerce Backend API
+# MegaMart Commerce API
 
-> A portfolio project demonstrating modern backend API development using **Node.js**, **Express.js**, **MongoDB Atlas**, and **Mongoose**.
+The backend for MegaMart: products, Stripe checkout, and orders, with Clerk
+authentication and a single admin account for catalogue management. Built
+with Node.js, Express, and MongoDB, and deployed on Vercel.
 
-![Node.js](https://img.shields.io/badge/Node.js-22.x-green)
-![Express.js](https://img.shields.io/badge/Express.js-Backend-lightgrey)
+![Node.js](https://img.shields.io/badge/Node.js-22+-green)
+![Express.js](https://img.shields.io/badge/Express.js-5-lightgrey)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green)
-![Mongoose](https://img.shields.io/badge/Mongoose-ODM-red)
-![License](https://img.shields.io/badge/License-MIT-blue)
 
-A RESTful backend API for a simplified e-commerce platform built with **Node.js**, **Express**, and **MongoDB**.
-
-This project demonstrates backend software engineering concepts including CRUD operations, MongoDB relationships using Mongoose, shopping cart management, order processing, filtering, sorting, validation, and clean RESTful API design.
+Live API: <https://ecommerce-backend-api-dusky.vercel.app/api/products>
 
 ---
 
-# Skills Demonstrated
+## Where this fits
 
-- RESTful API Development
-- Node.js
-- Express.js
-- MongoDB Atlas
-- Mongoose ODM
-- CRUD Operations
-- Database Relationships
-- MongoDB Query Operators
-- Shopping Cart Management
-- Order Processing
-- Query Filtering
-- Query Sorting
-- Pagination
-- Data Validation
-- Error Handling
-- Clean Project Architecture
-- Serverless and Long-Running Deployment Targets
+MegaMart is three repositories, each deployed separately:
+
+| Repo | Stack | Responsible for |
+| --- | --- | --- |
+| [`megamart-react-storefront`](https://github.com/Vros15/megamart-react-storefront) | React, Vite | Everything the shopper and admin see |
+| **`ecommerce-backend-api`** (this repo) | Node, Express, MongoDB | Source of truth: products, orders, payments (Stripe), and soon tickets and refunds |
+| [`megamart-ai-service`](https://github.com/Vros15/megamart-ai-service) | Python, FastAPI | AI support chat: policy retrieval and grounded replies |
+
+This API is the only place that decides prices, order ownership, and who may
+write. The storefront and the AI service are clients of it.
 
 ---
 
-# Learning Objectives
+## What it does
 
-This project was built to strengthen and demonstrate backend software engineering skills including:
-
-- Designing RESTful APIs
-- Building scalable Express applications
-- Modeling MongoDB document relationships
-- Implementing complete CRUD operations
-- Applying business rules and validation
-- Processing shopping carts into customer orders
-- Working with query parameters for filtering and sorting
-- Writing clean and maintainable backend code
-
----
-
-# Technologies Used
-
-- Node.js
-- Express.js
-- MongoDB Atlas
-- Mongoose
-- Morgan
-- dotenv
-- Helmet
-- CORS
-- express-rate-limit
+- **Catalogue:** public product reads with filtering, search, sorting, and
+  pagination. Create, update, and delete are limited to one admin account.
+- **Checkout:** creates Stripe Checkout Sessions (test mode). Every price is
+  re-read from the database, so the client can't change what gets charged.
+- **Orders:** created only by a signature-verified Stripe webhook. A
+  signed-in shopper can read their own orders, and nobody else's.
+- **Hardening:** centralized error handling, request validation, Helmet,
+  CORS, payload size limits, rate limiting, structured JSON logs with secret
+  redaction, and health/readiness checks.
 
 ---
 
-# Production Hardening (Implemented)
+## Tech stack
 
-The API now includes incremental production-hardening improvements:
-
-- Centralized error handling with a shared error response format
-- Async controller wrapper to forward promise errors consistently
-- Route-not-found middleware (`404`)
-- Request validation middleware for carts, customers, products, and orders
-- Security middleware: Helmet, CORS, JSON payload size limit, and API rate limiting (`429`)
-- Single-admin write protection on every `POST`/`PUT`/`DELETE` route (`401`/`403`). See [Admin Write Protection](#admin-write-protection)
-- Startup reliability improvements:
-     - Fail-fast startup if MongoDB connection fails
-     - Graceful shutdown on `SIGINT` and `SIGTERM`
+| Layer | Choice |
+| --- | --- |
+| Runtime | Node.js 22+, Express 5 |
+| Database | MongoDB Atlas with Mongoose |
+| Auth | Clerk (`@clerk/express`), session tokens sent as bearer tokens |
+| Payments | Stripe Checkout (test mode) and webhooks |
+| Tests | Node's built-in test runner (`node --test`) against a separate test database |
+| Hosting | Vercel serverless function (a long-running server is also supported) |
 
 ---
 
-# Roadmap
+## API reference
 
-Full task-by-task plan and status: [`SPRINT.md`](./SPRINT.md).
+Base URL: `/api`. Errors share one shape (see [Errors](#errors)).
 
-### Shipped
+### Access levels
 
-- Centralized error handling and request validation across products,
-  customers, carts, and orders
-- Filtering, search, sorting, and pagination on `GET /api/products`
-- Serverless deployment on Vercel, with the long-running server still supported
-- Single-admin write protection through Clerk
-- Stripe test-mode checkout, with orders created by a signature-verified webhook
-- `GET /api/orders/me`, a signed-in shopper's own order history
+| Level | Requirement | On failure |
+| --- | --- | --- |
+| Public | None | |
+| Signed in | Valid Clerk session token | `401 UNAUTHENTICATED` |
+| Admin | Signed in as `ADMIN_USER_ID` | `401`, or `403 FORBIDDEN` for any other account |
+| Stripe | Valid Stripe webhook signature | `400` |
 
-### Coming next: AI-assisted refund support
+Only the catalogue and checkout are public. Customer, cart, and order data is
+admin-only, except each shopper's own orders at `GET /api/orders/me`.
 
-A support chat for the storefront, starting with refunds. The AI work lives
-in a separate Python service (`megamart-ai-service`): FastAPI, retrieval over
-MegaMart's written policies, and PostgreSQL with pgvector for the embeddings.
+### Products
 
-This API stays the source of truth for orders, tickets, and money. The AI
-service reads a shopper's own orders and opens refund tickets by forwarding
-that shopper's Clerk token, so it never holds admin rights here and cannot
-issue a refund. A support agent approves, and this API executes the refund
-after re-checking the order, the payment, and the refund policy itself.
-Sprints 10 to 13 in [`SPRINT.md`](./SPRINT.md) are this API's share.
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| GET | `/products` | Public | List products, with the query parameters below |
+| GET | `/products/:id` | Public | One product |
+| POST | `/products` | Admin | Create a product |
+| PUT | `/products/:id` | Admin | Update a product |
+| DELETE | `/products/:id` | Admin | Delete a product |
 
----
+`GET /products` query parameters. Unknown parameters return `400` instead of
+being ignored, so a typo shows up right away.
 
-# Mongoose Features Used
+| Parameter | Description |
+| --- | --- |
+| `category` | Exact match, case-insensitive |
+| `search` | Matches `name` or `description`, case-insensitive |
+| `minPrice`, `maxPrice` | Inclusive price bounds |
+| `inStock` | `true` for `stock > 0`, `false` for `stock === 0` |
+| `sortBy`, `sortOrder` | `price` or `name`; `asc` (default) or `desc` |
+| `page`, `limit` | Default `1` and `20`; `limit` maximum `100` |
 
-- Schema Validation
-- ObjectId References
-- populate()
-- find()
-- findById()
-- findOne()
-- findOneAndUpdate()
-- findByIdAndUpdate()
-- findByIdAndDelete()
+Categories: Electronics, Audio, Home & Kitchen, Home Office, Apparel &
+Accessories, Fitness & Wellness.
 
-### MongoDB Update Operators
+Responses include a `meta` block (`total`, `page`, `limit`, `totalPages`,
+`hasNextPage`, `hasPreviousPage`). `total` counts the filtered result set,
+not the whole collection.
 
-- `$push`
-- `$pull`
-- `$set`
+### Checkout and webhooks
 
----
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| POST | `/checkout` | Public, sign-in optional | Create a Stripe Checkout Session from `{ items: [{ productId, quantity }] }` and return its `url` |
+| GET | `/checkout/session/:sessionId` | Public | A completed session's line items and total, for the confirmation page |
+| POST | `/webhooks/stripe` | Stripe | On `checkout.session.completed`, creates the `Order` |
 
-# Features
+If the shopper is signed in at checkout, their Clerk user id is carried
+through the session, so the webhook can attach the order to them.
 
-## Products
+### Orders
 
-Complete CRUD functionality.
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| GET | `/orders/me` | Signed in | The caller's own orders |
+| GET | `/orders` | Admin | All orders, filterable by `status` |
+| GET | `/orders/:orderId` | Admin | One order |
+| PUT | `/orders/:orderId` | Admin | Update an order's status |
+| DELETE | `/orders/:orderId` | Admin | Delete an order |
+| POST | `/orders/:customer` | Admin | Create an order from a customer's cart (legacy flow, below) |
 
-- Create products
-- Retrieve all products
-- Retrieve a product by ID
-- Update products
-- Delete products
+### Customers and carts (admin only)
 
-### Query Parameters
+`/customers` (full CRUD) and `/carts/:customer` (read, add, update quantity,
+remove, clear) come from this API's original server-side cart design. Each
+customer has one cart, and an order placed from it copies the items, totals
+them, and clears the cart.
 
-`GET /api/products` accepts the parameters below. Unknown parameters are rejected with `400` rather than ignored, so a typo surfaces immediately instead of returning an unfiltered result set.
+The storefront doesn't use them. Its cart lives in the browser and checks out
+through Stripe. They are kept, locked to the admin, as a working example of
+Mongoose relationships and update operators.
 
-| Parameter | Type | Description |
-|---|---|---|
-| `category` | string | Exact match, case-insensitive |
-| `search` | string | Matches `name` or `description`, case-insensitive |
-| `minPrice` | number | Inclusive lower bound, must be `>= 0` |
-| `maxPrice` | number | Inclusive upper bound, must be `>= minPrice` |
-| `inStock` | `true` or `false` | `true` returns `stock > 0`, `false` returns `stock === 0` |
-| `sortBy` | `price` or `name` | Field to sort on |
-| `sortOrder` | `asc` or `desc` | Defaults to `asc` |
-| `page` | integer | Defaults to `1` |
-| `limit` | integer | Defaults to `20`, maximum `100` |
+### Operational
 
-Available categories:
+Outside `/api`, so exempt from rate limiting:
 
-- Electronics
-- Audio
-- Home & Kitchen
-- Home Office
-- Apparel & Accessories
-- Fitness & Wellness
+| Endpoint | Returns |
+| --- | --- |
+| `GET /health` | `200` while the process is running; doesn't touch the database |
+| `GET /ready` | `200` when MongoDB is reachable, `503` otherwise |
 
-Examples:
-
-```http
-GET /api/products?category=Audio&minPrice=20&maxPrice=100&inStock=true
-GET /api/products?search=wireless&sortBy=price&sortOrder=desc
-GET /api/products?page=2&limit=6
-```
-
-Implementation notes:
-
-- Name sorting applies an `en` collation at strength 2. MongoDB compares strings by byte value by default, which sorts every capital ahead of every lowercase and would place `LED Desk Lamp` before `Laptop Backpack`.
-- `category` and `search` are escaped before being compiled into regular expressions.
-- Invalid values return `400` with code `INVALID_PRODUCT_QUERY` and a message naming the parameter at fault.
-
-### Pagination
-
-Product responses include a `meta` block describing the result set:
+### Errors
 
 ```json
 {
-    "message": "Products retrieved successfully",
-    "products": ["..."],
-    "meta": {
-        "total": 20,
-        "page": 1,
-        "limit": 20,
-        "totalPages": 1,
-        "hasNextPage": false,
-        "hasPreviousPage": false
-    }
+  "success": false,
+  "code": "INVALID_PRODUCT_QUERY",
+  "message": "A message naming what was wrong",
+  "details": null
 }
 ```
 
-`total` counts documents matching the active filter rather than the whole collection, so a filtered request reports the size of its own result set.
+Only errors the API raises deliberately (`AppError`) or client errors such as
+malformed JSON return their real message. Anything unexpected (a database or
+Stripe failure, a bug) returns a generic `500 INTERNAL_SERVER_ERROR`, and the
+details are logged server-side instead.
+
+| Code | Meaning |
+| --- | --- |
+| `400` | Invalid request |
+| `401` | Not signed in |
+| `403` | Signed in, but not allowed |
+| `404` | Not found |
+| `429` | Rate limit exceeded |
+| `500` | Unexpected server error, or a required service isn't configured |
 
 ---
 
-## Customers
+## Key design decisions
 
-Complete CRUD functionality.
+**One admin account, not a roles system.** The problem was "a stranger can
+delete the catalogue," not general permissions. `requireAuth()` answers "who
+is this?" (`401`), and `requireAdmin` answers "is it the one account allowed
+to write?" (`403`). Both run before body validation, so an anonymous caller
+learns nothing about what a valid request looks like. Missing Clerk
+configuration closes these routes (`500`) rather than opening them. Roles
+(`admin`, `support_agent`) arrive with the support desk.
 
-- Create customer
-- Retrieve all customers
-- Retrieve customer by ID
-- Update customer
-- Delete customer
+**The client never sets a price.** Checkout accepts only product ids and
+quantities. Each product is re-read from MongoDB for its real price and
+checked against stock before the Stripe session is created.
 
----
+**Orders come from Stripe, not the browser.** The success redirect proves
+nothing, so an order is only created when Stripe's signed webhook confirms
+the payment.
 
-## Shopping Cart
+**Owner scoping on the server.** `GET /orders/me` filters by the Clerk user
+id from the verified token, never by an id the client sends.
 
-Each customer is limited to **one shopping cart**.
+**Custom `requireAuth()`.** Clerk's own version is deprecated and redirects
+to a sign-in page, which is meaningless to an API client.
+`middlewares/requireAuth.js` returns a JSON `401` instead.
 
-Current functionality includes:
+**Serverless on Vercel.** The API first ran on Render, where free-tier cold
+starts took 30–60 seconds, and a portfolio API is idle almost all the time.
+Vercel's cold starts are about 1–2 seconds. The trade-offs:
 
-- Create shopping cart
-- Retrieve shopping cart
-- Add products to cart
-- Remove products from cart
-- Update product quantity
-- Clear shopping cart
-- Calculate total cart price
-- Populate customer and product information
-
-### Business Rules
-
-- One shopping cart per customer
-- Product existence validation
-- Quantity validation
-- Automatic total price calculation
-- Cart updates performed using MongoDB update operators
-
----
-
-## Orders
-
-Orders are created directly from a customer's shopping cart.
-
-When an order is placed, the API will:
-
-- Verify the customer's cart exists
-- Verify the cart is not empty
-- Calculate the total order price
-- Copy all cart items into the order
-- Set the order status to **Pending**
-- Automatically clear the customer's shopping cart
-
-Current functionality:
-
-- Create order from cart
-
-### Business Rules
-
-- Orders can only be created from existing carts
-- Empty carts cannot be checked out
-- Order totals are calculated automatically
-- Shopping carts are automatically cleared after checkout
+- The MongoDB connection is cached on `globalThis`, including the in-flight
+  promise, so concurrent requests to a cold instance share one connection
+  attempt instead of exhausting Atlas's connection limit.
+- `express-rate-limit` counts in memory per instance, so on serverless the
+  limit is advisory. Enforcing it properly needs a shared store such as
+  Redis.
+- `app.js` holds the whole app. `index.js` (long-running server) and
+  `api/index.js` (Vercel) are thin entry points, so either target runs the
+  same code.
 
 ---
 
-# HTTP Status Codes
-
-| Code | Description |
-|------|-------------|
-| 200 | Success |
-| 201 | Resource Created |
-| 400 | Bad Request |
-| 401 | Not Signed In |
-| 403 | Signed In, Not the Admin |
-| 404 | Resource Not Found |
-| 429 | Too Many Requests |
-| 500 | Internal Server Error |
-
----
-
-# API Endpoints
-
-Every read is public. Every write requires the admin session described in [Admin Write Protection](#admin-write-protection).
-
-## Products
-
-| Method | Endpoint | Access | Description |
-|---------|----------|--------|-------------|
-| GET | `/api/products` | Public | Retrieve products, with optional filtering, search, sorting, and pagination |
-| GET | `/api/products/:id` | Public | Retrieve a product by ID |
-| POST | `/api/products` | Admin | Create a product |
-| PUT | `/api/products/:id` | Admin | Update a product |
-| DELETE | `/api/products/:id` | Admin | Delete a product |
-
----
-
-## Customers
-
-| Method | Endpoint | Access | Description |
-|---------|----------|--------|-------------|
-| GET | `/api/customers` | Public | Retrieve all customers |
-| GET | `/api/customers/:id` | Public | Retrieve customer by ID |
-| POST | `/api/customers` | Admin | Create customer |
-| PUT | `/api/customers/:id` | Admin | Update customer |
-| DELETE | `/api/customers/:id` | Admin | Delete customer |
-
----
-
-## Shopping Cart
-
-| Method | Endpoint | Access | Description |
-|---------|----------|--------|-------------|
-| POST | `/api/carts` | Admin | Create a shopping cart |
-| GET | `/api/carts/:customer` | Public | Retrieve a customer's cart |
-| POST | `/api/carts/:customer/products` | Admin | Add product to cart |
-| PUT | `/api/carts/:customer/products` | Admin | Update product quantity |
-| DELETE | `/api/carts/:customer/products` | Admin | Remove product from cart |
-| DELETE | `/api/carts/:customer/clear` | Admin | Clear shopping cart |
-
----
-
-## Orders
-
-| Method | Endpoint | Access | Description |
-|---------|----------|--------|-------------|
-| POST | `/api/orders/:customer` | Admin | Create an order from a customer's cart |
-| GET | `/api/orders/me` | Signed in | Retrieve the signed-in shopper's own orders |
-
----
-
-## Webhooks
-
-| Method | Endpoint | Access | Description |
-|---------|----------|--------|-------------|
-| POST | `/api/webhooks/stripe` | Stripe only | Verifies Stripe's signature and creates an `Order` on `checkout.session.completed` |
-
----
-
-## Operational
-
-These sit outside `/api` and are therefore exempt from rate limiting, which makes `/health` a suitable target for an uptime monitor or keep-warm ping.
-
-| Method | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/health` | `200` while the process is running. Does not touch the database |
-| GET | `/ready` | `200` when MongoDB is reachable, `503` otherwise |
-
----
-
-# Admin Write Protection
-
-Every `POST`, `PUT`, and `DELETE` route is restricted to a single account. Every `GET` route is public, so the storefront stays browsable with no login.
-
-This is deliberately narrower than general user authentication. The problem being solved is "a stranger can delete the catalogue", not "this API needs roles and permissions", so there is one admin, named by an environment variable, and no users or roles table.
-
-## How It Works
-
-Two middlewares stack in front of each write route, because authentication and authorisation are different questions:
-
-| Middleware | Question | Failure |
-|---|---|---|
-| `requireAuth()` | Does this request carry a valid, unexpired Clerk session token? | `401` `UNAUTHENTICATED` |
-| `requireAdmin` | Does that token belong to `ADMIN_USER_ID`? | `403` `FORBIDDEN` |
-
-```js
-router.post("/", requireAuth(), requireAdmin, validateCreateProductBody, createProduct);
-```
-
-Both run before the validation middleware, so an anonymous caller learns nothing about the shape of a valid request body.
-
-Anyone can still create a Clerk account and sign in. A session on its own grants zero write access — it only becomes useful if a future customer-facing feature, such as order history, needs a signed-in customer to exist.
-
-> **A note on `requireAuth()`**
->
-> Clerk's own `requireAuth()` is deprecated in `@clerk/express` v2 and redirects an unauthenticated caller to a sign-in page, which is meaningless to an API client expecting JSON. `middlewares/requireAuth.js` composes the pieces it wrapped — `clerkMiddleware()` to read the token, then an explicit check — and answers `401` instead.
-
-## Setup
-
-1. Create an application at [clerk.com](https://clerk.com).
-2. From **API keys** in the Clerk dashboard, copy the **Secret key** (`sk_...`) and the **Publishable key** (`pk_...`) into `CLERK_SECRET_KEY` and `CLERK_PUBLISHABLE_KEY`. The secret key is a password — never commit it.
-3. Sign in once as the account that should own the catalogue, then open **Users** in the Clerk dashboard and copy that account's user ID (`user_...`) into `ADMIN_USER_ID`.
-
-Leaving any of the three unset closes the write routes rather than opening them: missing Clerk keys return `500` `AUTH_NOT_CONFIGURED`, and a missing `ADMIN_USER_ID` returns `500` `ADMIN_NOT_CONFIGURED`.
-
-## Verifying It
-
-A write needs a real session token, sent as a bearer token:
-
-```bash
-curl -X POST https://your-api/api/products -H "Authorization: Bearer <session-token>" -H "Content-Type: application/json" -d "{}"
-```
-
-| Request | Expected |
-|---|---|
-| `GET /api/products`, no header | `200` |
-| `POST /api/products`, no header | `401` |
-| `POST /api/products`, token for any other account | `403` |
-| `POST /api/products`, token for `ADMIN_USER_ID` | `201` |
-
-Run the automated coverage with `npm test`. `tests/adminAuth.test.js` fakes the Clerk request object, so it checks the `403` boundary and every unauthenticated write without needing real credentials.
-
-## Known Consequence
-
-Cart and order writes are admin-only too, which is correct today because nothing but the admin writes them. A future storefront cart, where a shopper adds items themselves, will need those specific routes to accept any signed-in customer rather than only the admin.
-
----
-
-# Example Workflow
+## Project structure
 
 ```text
-Customer
-     │
-     ▼
-Create Shopping Cart
-     │
-     ▼
-Add Products
-     │
-     ▼
-Retrieve Shopping Cart
-     │
-     ▼
-Total Price Calculated
-     │
-     ▼
-Checkout
-     │
-     ▼
-Order Created
-     │
-     ▼
-Shopping Cart Cleared
+api/index.js        Vercel entry point (exports the app, no listener)
+index.js            Long-running server entry point, with graceful shutdown
+app.js              Express app: middleware and route mounting
+routes/             One router per resource
+controllers/        Request handlers
+middlewares/        Auth, validation, error handling, 404
+models/             Mongoose schemas: Product, Order, Customer, Cart
+utils/              AppError, logger, Stripe client factory, pagination
+database/           MongoDB connection
+seed/               Sample data script
+tests/              node:test suites, fixtures, and helpers
+SPRINT.md           Task-by-task plan and status
 ```
 
 ---
 
-# Example Response
-
-```json
-{
-    "message": "Cart retrieved successfully.",
-    "cart": {
-        "...": "..."
-    },
-    "totalPrice": 152.94
-}
-```
-
----
-
-# Seed Database (Optional)
-
-This project includes a database seed script to quickly populate MongoDB with sample data for testing.
-
-The seed script creates:
-
-- 20 sample products
-- 20 sample customers
-- Sample shopping carts populated with products
-
-This allows the API to be tested immediately without manually creating records.
-
-## Run the Seed Script
-
-After configuring your `.env` file:
-
-```env
-MONGODB_URI=your_connection_string
-```
-
-Run the seed script:
+## Getting started
 
 ```bash
-npm run seed
-```
-
-or
-
-```bash
-node seed/seed.js
-```
-
-The script will automatically:
-
-- Connect to MongoDB
-- Remove previously seeded data
-- Insert sample products
-- Insert sample customers
-- Create sample shopping carts
-
-Example output:
-
-```text
-Connected to MongoDB
-Existing data removed
-Inserted 20 products
-Inserted 20 customers
-Inserted sample carts
-Database seeded successfully
-```
-
-> **Important**
->
-> All customer names, addresses, phone numbers, email addresses, product descriptions, pricing, and other information generated by the seed script are **fictional** and are provided **solely for development and testing purposes**.
-
-Using the seed script is optional.
-
----
-
-# DNS Troubleshooting (Optional)
-
-If you experience MongoDB Atlas connection issues caused by DNS resolution (commonly when using a mobile hotspot or restrictive network), you may temporarily add the following code before connecting to MongoDB:
-
-```javascript
-const dns = require("node:dns");
-
-dns.setServers(["1.1.1.1", "8.8.8.8"]);
-```
-
-> **Note**
->
-> This workaround was only used during development to resolve a local DNS issue. If your application connects to MongoDB Atlas successfully, remove this code before running the application.
-
----
-
-# Project Structure
-
-```text
-ECommerce-Backend-API
-│
-├── api/
-│   └── index.js          Vercel entry point, exports the app without listening
-├── controllers/
-├── database/
-├── middlewares/
-├── models/
-├── routes/
-├── seed/
-│   ├── README.md
-│   └── seed.js
-├── utils/
-├── .env
-├── .env.example
-├── .gitignore
-├── app.js                Builds and exports the configured Express app
-├── index.js              Local and Render entry point, adds the listener
-├── vercel.json
-├── package.json
-├── package-lock.json
-├── README.md
-└── SPRINT.md             Task-by-task plan and status
-```
-
-`app.js` holds every route and middleware. `index.js` and `api/index.js` are thin entry points that adapt it to a long-running server and a serverless function respectively, so both deployment targets run identical application code.
-
----
-
-# Installation
-
-Clone the repository:
-
-```bash
-git clone https://github.com/Vros15/EComerce-Backend-API.git
-```
-
-Navigate into the project:
-
-```bash
-cd EComerce-Backend-API
-```
-
-Install dependencies:
-
-```bash
+git clone https://github.com/Vros15/ecommerce-backend-api.git
+cd ecommerce-backend-api
 npm install
-```
-
-Create a `.env` file. See `.env.example` for the full list with notes:
-
-```env
-MONGODB_URI=your_connection_string
-# Required for write routes. See Admin Write Protection
-CLERK_SECRET_KEY=sk_test_your_clerk_secret_key
-CLERK_PUBLISHABLE_KEY=pk_test_your_clerk_publishable_key
-ADMIN_USER_ID=user_your_clerk_user_id
-# Optional
-PORT=3000
-RATE_LIMIT_MAX=1000
-CORS_ORIGIN=http://localhost:5173
-```
-
-> The Clerk variables are only needed to make writes work. Without them the API still starts and serves every `GET`; writes answer `500` `AUTH_NOT_CONFIGURED` instead of running.
-
-> `RATE_LIMIT_MAX` defaults to `100` per 15 minutes. That is easy to exhaust while developing a frontend, since React StrictMode double-fires effects and every hot reload refetches.
-
-Start the development server:
-
-```bash
-npm start
-```
-
-Or with file watching:
-
-```bash
+cp .env.example .env    # then fill in the values
 npm run dev
 ```
 
-The API will be available at:
+The API runs at `http://localhost:3000`.
 
-```text
-http://localhost:3000
-```
+### Environment variables
 
----
+Every variable is documented in [`.env.example`](./.env.example).
 
-# Future Improvements
+| Variable | Required for |
+| --- | --- |
+| `MONGODB_URI` | Everything; the app refuses to start without it |
+| `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY` | Signed-in and admin routes |
+| `ADMIN_USER_ID` | Admin routes (the Clerk user id of the one admin) |
+| `STRIPE_SECRET_KEY` | Checkout (test mode key, `sk_test_...`) |
+| `STRIPE_WEBHOOK_SECRET` | The Stripe webhook (`whsec_...`) |
+| `FRONTEND_URL` | Where Stripe redirects after checkout |
+| `MONGODB_URI_TEST` | `npm test` only; must be a separate database |
+| `CORS_ORIGIN`, `RATE_LIMIT_MAX`, `LOG_LEVEL`, `PORT` | Optional |
 
-- Retrieve all orders
-- Retrieve a single order by ID
-- Retrieve orders by customer
-- Filter orders by status
-- Update order status
-- Automatically reduce product inventory after checkout
-- Customer-owned cart writes, so a signed-in shopper can manage their own cart
-  without the admin session that every write currently requires
-- Password hashing with bcrypt (only needed if auth moves off Clerk)
-- Soft delete for products (`isActive` flag instead of removing the document) -
-  a defense-in-depth safety net on top of admin auth, not required to stop an
-  unauthenticated stranger
-- Complete orders validation middleware coverage
-- Unit and integration testing with Jest
-- Swagger / OpenAPI documentation
-- Docker support
+A missing Clerk or Stripe variable disables only the routes that need it,
+with a `500` naming what isn't configured. Reads keep working.
 
----
+The storefront's Clerk publishable key must come from the same Clerk instance
+as `CLERK_SECRET_KEY` here, or its tokens are rejected.
 
-# Deployment History
+### Scripts
 
-This API was first deployed to Render as a long-running Express server, then restructured to also run on Vercel as a serverless function. Both targets remain supported: `index.js` attaches a listener for a persistent server, `api/index.js` exports the same app for per-request invocation, and `app.js` holds the application code both share. The move was a hosting decision, not a rewrite.
-
-## Starting on Render
-
-Render matched how the code was already written. Express with a persistent process, a connection pool opened once at startup, graceful shutdown on `SIGINT` and `SIGTERM`, and in-memory rate limiting all behave the way they were designed to behave. Deployment was a build command and a start command, with no changes to the application.
-
-Measured warm, `GET /api/products` returned in roughly 230ms.
-
-## Why the Move
-
-The free tier spins a service down after roughly 15 minutes of inactivity and takes up to a minute to wake it.
-
-That penalty falls hardest on exactly this kind of project. A high-traffic service is rarely idle, so one visitor absorbs the wait and the rest are served warm. A portfolio API is idle almost all the time and receives isolated visits days apart, which means close to every visitor pays the full cold start. Low traffic does not reduce the problem; it makes it near-certain.
-
-The alternatives were a keep-warm ping, a paid instance, or a platform without the penalty. Serverless cold starts are roughly two orders of magnitude smaller, and the frontend that consumes this API deploys to Vercel already.
-
-## Trade-offs Accepted
-
-| | Render | Vercel |
-|---|---|---|
-| Cold start | 30–60s after idle | Approximately 1–2s |
-| Keep-warm ping | Required to avoid it | Not required |
-| Rate limiting | Enforced correctly | Per-instance, effectively advisory |
-| Connection model | One pool for the process lifetime | Cached per instance, reused while warm |
-| Graceful shutdown | Meaningful | Not applicable |
-| Cost to avoid cold starts | Paid instance or external monitor | None |
-
-## What the Move Cost
-
-**Rate limiting stopped being enforceable.** `express-rate-limit` stores counters in memory. Every serverless instance keeps its own, so the effective ceiling multiplies by instance count and resets whenever instances recycle. Restoring a real limit requires a shared store such as Redis. On Render the limit works as configured.
-
-**Connection handling required rework.** A serverless platform has no startup phase, so connecting once before listening is not available. The connection is cached on `globalThis` and established per request, with the in-flight promise cached rather than only the resolved connection, so concurrent requests arriving at a cold instance share a single attempt instead of opening one apiece. Without that, instance count multiplies straight into the Atlas connection limit.
-
-Simulating a cold instance locally, five concurrent requests opened exactly one connection and completed in roughly 700ms–1s including the Atlas handshake, against 35ms once warm.
-
-**Shutdown handling became inert.** The `SIGINT` and `SIGTERM` handlers still run under `index.js` and are simply unused on serverless.
-
-## Why Both Are Kept
-
-Splitting `app.js` from the entry points cost a few lines and keeps the decision reversible. Render remains a valid target if the rate limiter needs to be enforceable, and the same code serves both without branching on the environment.
+| Command | Does |
+| --- | --- |
+| `npm run dev` | Start with file watching |
+| `npm start` | Start without watching |
+| `npm test` | Run the test suite against `MONGODB_URI_TEST` |
+| `npm run seed` | Replace sample products, customers, and carts. Development only; the data is fictional |
 
 ---
 
-# Deploy to Render
+## Testing
 
-> **Retired.** Vercel is the only deployment this project runs on now. This section is kept because the code still supports a long-running server — `index.js` attaches a listener — and because the rate limiter only behaves correctly there. Nothing here is set up or maintained.
+`npm test` runs Node's built-in test runner. The suites cover the `401` and
+`403` auth boundaries (with a faked Clerk request, so no real credentials are
+needed), product query parsing, error exposure rules, logger redaction, and
+the Stripe client factory.
 
-Use these settings when creating a new **Web Service** in Render.
-
-## Render Service Settings
-
-- Runtime: `Node`
-- Build Command: `npm install`
-- Start Command: `npm start`
-- Health Check Path: `/health`
-
-## Required Environment Variables
-
-- `MONGODB_URI` = your MongoDB Atlas connection string
-- The Clerk variables listed under [Deploy to Vercel](#deploy-to-vercel), if writes need to work on a Render instance
-
-## Optional Environment Variables
-
-- `PORT` = leave empty in Render unless you have a special requirement (Render injects `PORT` automatically)
-- `RATE_LIMIT_MAX` = request cap per 15-minute window (default `100`)
-- `CORS_ORIGIN` = comma-separated allowed origins, for example:
-
-```env
-CORS_ORIGIN=https://your-frontend.onrender.com,https://yourdomain.com
-```
-
-## Post-Deploy Smoke Checks
-
-After deployment, validate:
-
-```http
-GET /health
-GET /ready
-GET /api/products
-POST /api/products
-```
-
-Expected behavior:
-
-- `/health` returns `200` when the API process is running.
-- `/ready` returns `200` when MongoDB is connected, otherwise `503`.
-- `POST /api/products` with no `Authorization` header returns `401`. A `500` means the Clerk variables are missing from this environment.
-
-## Pre-Push Checklist
-
-- Ensure `.env` is excluded from git.
-- Confirm all endpoints work locally with Atlas.
-- Verify order routes are hardened before exposing publicly.
-- Seed database only in non-production environments.
-
-> **Free tier note**
->
-> Render free web services spin down after roughly 15 minutes of inactivity and take up to a minute to wake. A portfolio API is idle almost all the time, so nearly every visitor hits that delay. Pointing an uptime monitor at `/health` on a 10-minute interval avoids it. `/health` sits outside `/api`, so the ping consumes no rate limit budget and issues no database query.
+Tests that touch the database wipe and re-seed it, so they refuse to run
+unless `MONGODB_URI_TEST` is set, differs from `MONGODB_URI`, and names a
+database containing `test`.
 
 ---
 
-# Deploy to Vercel
+## Deployment
 
-The app runs as a single serverless function. `api/index.js` exports the Express instance without a listener, and `vercel.json` rewrites every path to it, so the existing router remains the only place routes are defined.
+Deployed on Vercel as a single serverless function. `vercel.json` rewrites
+every path to `api/index.js`, so the Express router stays the only place
+routes are defined.
 
-## Vercel Project Settings
+- **Project settings:** framework preset `Other`, with no build command or
+  output directory
+- **Environment:** set the variables above for every Vercel environment
+  (Production, Preview, Development). A preview missing them serves reads and
+  fails writes.
+- **Region:** `regions` in `vercel.json` should match the Atlas cluster's
+  region, or every query pays an extra round trip
+- **CORS:** Vercel gives every preview deploy its own URL, so a fixed
+  `CORS_ORIGIN` list blocks preview builds of the storefront
 
-- Framework Preset: `Other`
-- Build Command: leave empty
-- Output Directory: leave empty
-- Install Command: `npm install`
+Smoke checks after a deploy:
 
-## Required Environment Variables
+| Request | Expected |
+| --- | --- |
+| `GET /health` | `200` |
+| `GET /ready` | `200` |
+| `GET /api/products` | `200` (confirms the rewrite reaches Express) |
+| `POST /api/products`, no token | `401`. A `500` means the Clerk variables are missing; a `201` means writes are open |
 
-- `MONGODB_URI` = your MongoDB Atlas connection string
-- `CLERK_SECRET_KEY` = Clerk Secret key (`sk_...`)
-- `CLERK_PUBLISHABLE_KEY` = Clerk Publishable key (`pk_...`)
-- `ADMIN_USER_ID` = Clerk user ID (`user_...`) of the one account allowed to write
+---
 
-Set these for every environment the project has (Production, Preview, Development). A preview deploy missing them serves reads normally and answers `500` on writes. See [Admin Write Protection](#admin-write-protection) for where the values come from.
+## Roadmap
 
-## Optional Environment Variables
+Full plan and status: [`SPRINT.md`](./SPRINT.md).
 
-- `RATE_LIMIT_MAX` = request cap per 15-minute window
-- `CORS_ORIGIN` = comma-separated allowed origins
+**Next: AI-assisted refund support.** A support chat, starting with refunds.
+The AI work lives in [`megamart-ai-service`](https://github.com/Vros15/megamart-ai-service).
+This API stays the source of truth:
 
-> **Preview deployments and CORS**
->
-> Vercel assigns a unique URL to every branch and commit. A fixed `CORS_ORIGIN` list rejects all of them, so preview builds of a frontend will fail against a production API while working locally. Leaving `CORS_ORIGIN` unset falls through to `*`.
+- The AI service reads a shopper's own orders and opens refund tickets by
+  forwarding that shopper's Clerk token, so it never holds admin rights here.
+- A support agent approves each refund, and this API carries it out only
+  after re-checking the order, the payment, and the refund policy itself.
+- Every ticket change and refund attempt is written to an audit trail.
 
-## Serverless Considerations
-
-- The Mongoose connection is cached on `globalThis`, so warm invocations reuse it instead of opening a connection per request and exhausting the Atlas connection limit.
-- `express-rate-limit` keeps its counters in memory. Each instance has its own, so the effective limit scales with instance count and resets as instances recycle. A shared store is required for the limit to mean anything in this environment.
-- The `SIGINT` and `SIGTERM` handlers in `index.js` do not apply to serverless invocations.
-- `regions` in `vercel.json` should match the Atlas cluster region. A mismatch adds a round trip to every query.
-
-## Post-Deploy Smoke Checks
-
-```http
-GET /health
-GET /ready
-GET /api/products
-POST /api/products
-```
-
-`/api/products` also confirms the catch-all rewrite is reaching the Express router rather than returning a platform 404.
-
-`POST /api/products` with no `Authorization` header must return `401`. A `500` means the Clerk variables are missing from this environment, and a `201` means the write routes are open.
+Also open: customer-owned cart writes, stock decrement after checkout, and
+an OpenAPI spec.
